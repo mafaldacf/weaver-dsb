@@ -1,0 +1,121 @@
+version: '3.9'
+services:
+  # ----------------------
+  # POST STORAGE - MONGODB
+  # ----------------------
+  post-storage-mongodb-setup:
+    image: mongodb-setup:4.4.6
+    restart: 'always'
+    deploy:
+      placement:
+        constraints: [node.hostname == weaver-dsb-socialnetwork-manager]
+      restart_policy:
+        condition: on-failure
+        delay: 1s
+        max_attempts: 3
+    networks:
+      - deathstarbench_network
+  post-storage-mongodb-eu:
+    image: mongodb-delayed:4.4.6
+    ports:
+      - 27017:27017
+    cap_add:
+      - NET_ADMIN
+    hostname: post-storage-mongodb-eu
+    command: bash -c "mongod --bind_ip 0.0.0.0 --slowms 999999 --dbpath /ramdata --syncdelay 0 --journalCommitInterval 500 --wiredTigerCacheSizeGB 1 --replSet rs0 --oplogSize 128"
+    volumes:
+      - type: tmpfs
+        target: /ramdata
+        tmpfs:
+          size: 3000000000
+    deploy:
+      placement:
+        constraints: [node.hostname == weaver-dsb-socialnetwork-eu]
+    networks:
+      - deathstarbench_network
+  post-storage-mongodb-us:
+    image: mongodb-delayed:4.4.6
+    ports:
+      - 27018:27017
+    cap_add:
+      - NET_ADMIN
+    hostname: post-storage-mongodb-us
+    command: bash -c "mongod --bind_ip 0.0.0.0 --slowms 999999 --dbpath /ramdata --syncdelay 0 --journalCommitInterval 500 --wiredTigerCacheSizeGB 1 --replSet rs0 --oplogSize 128"
+    volumes:
+      - type: tmpfs
+        target: /ramdata
+        tmpfs:
+          size: 3000000000
+    deploy:
+      placement:
+        constraints: [node.hostname == weaver-dsb-socialnetwork-us]
+    networks:
+      - deathstarbench_network
+
+  # ------------------------------
+  # WRITE HOME TIMELINE - RABBITMQ
+  # ------------------------------
+  write-home-timeline-rabbitmq-setup:
+    image: rabbitmq-setup:3.8
+    restart: 'no'
+    environment:
+      RABBITMQ_ERLANG_COOKIE: "WRITE-HOME-TIMELINE-RABBITMQ"
+    #volumes:
+      #- ./config/rabbitmq/erlang.cookie:/etc/rabbitmq/.erlang.cookie
+    deploy:
+      placement:
+        constraints: [node.hostname == weaver-dsb-socialnetwork-manager]
+      restart_policy:
+        condition: on-failure
+        delay: 1s
+        max_attempts: 3
+    networks:
+      - deathstarbench_network
+  write-home-timeline-rabbitmq-eu:
+    image: rabbitmq:3.8-management
+    hostname: write-home-timeline-rabbitmq-eu
+    environment:
+      RABBITMQ_ERLANG_COOKIE: "WRITE-HOME-TIMELINE-RABBITMQ"
+      RABBITMQ_DEFAULT_VHOST: "/"
+      RABBITMQ_ENABLED_PLUGINS_FILE: "/etc/rabbitmq/enabled_plugins"
+    ports:
+      - 15672:15672
+      - 5672:5672
+    restart: 'no'
+    volumes:
+      - ./config/rabbitmq/write-home-timeline-rabbitmq-eu-definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ./config/rabbitmq/write-home-timeline-rabbitmq-eu.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./config/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
+      #- ./config/rabbitmq/erlang.cookie:/etc/rabbitmq/.erlang.cookie
+    deploy:
+      placement:
+        constraints: [node.hostname == weaver-dsb-socialnetwork-eu]
+    networks:
+      - deathstarbench_network
+  write-home-timeline-rabbitmq-us:
+    image: rabbitmq:3.8-management
+    hostname: write-home-timeline-rabbitmq-us
+    environment:
+      RABBITMQ_DEFAULT_VHOST: "/"
+      RABBITMQ_ENABLED_PLUGINS_FILE: "/etc/rabbitmq/enabled_plugins"
+      RABBITMQ_ERLANG_COOKIE: "WRITE-HOME-TIMELINE-RABBITMQ"
+    ports:
+      - 15673:15672
+      - 5673:5672
+    restart: 'no'
+    volumes:
+      - ./config/rabbitmq/write-home-timeline-rabbitmq-us-definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ./config/rabbitmq/write-home-timeline-rabbitmq-us.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./config/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
+      #- ./config/rabbitmq/erlang.cookie:/etc/rabbitmq/.erlang.cookie
+    deploy:
+      placement:
+        constraints: [node.hostname == weaver-dsb-socialnetwork-us]
+    networks:
+      - deathstarbench_network
+      
+networks:
+  deathstarbench_network:
+    external:
+      name: deathstarbench_network
+  

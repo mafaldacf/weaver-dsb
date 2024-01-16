@@ -1,0 +1,44 @@
+# --------
+# Services
+# --------
+
+["socialnetwork/services/ComposePost"]
+rabbitmq_address = "35.238.156.70"
+rabbitmq_port = 5673
+rabbitmq_username = "admin"
+rabbitmq_password = "admin"
+region = "us-central1"
+regions = ["europe-west3", "us-central1"]
+
+["socialnetwork/services/PostStorage"]
+mongodb_address = "35.238.156.70"
+mongodb_port = 27018
+region = "us-central1"
+
+["socialnetwork/services/WriteHomeTimeline"]
+rabbitmq_address = "35.238.156.70"
+rabbitmq_port = 5673
+rabbitmq_username = "admin"
+rabbitmq_password = "admin"
+mongodb_address = "35.238.156.70"
+mongodb_port = 27018
+num_workers = 4
+region = "us-central1"
+
+# ----------
+# Deployment
+# ----------
+
+[single]
+listeners.wrk2 = {address = "127.0.0.1:9001"}
+
+[multi]
+listeners.wrk2 = {address = "127.0.0.1:9001"}
+
+[serviceweaver]
+binary = "./socialnetwork"
+name = "weaver-dsb-socialnetwork-us"
+
+[gke]
+regions = ["us-central1"]
+listeners.wrk2 = {public_hostname = "weaver.dsb.socialnetwork"}
