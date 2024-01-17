@@ -1,16 +1,33 @@
-Single Process
+# Deployment
+
+## Single Process
 
 ``` zsh
     go generate
     SERVICEWEAVER_CONFIG=weaver.toml go run .
 ```
 
-Multi Process
+## Multi Process
 
 ``` zsh
     go build
     weaver multi deploy weaver.toml
 ```
+
+## GKE + datastores
+
+``` zsh
+    # deploy datastores in google cloud machines
+    ./manager terraform-deploy
+    ./manager run
+
+    # deploy service weaver application
+    go build
+    weaver gke deploy config/weaver/weaver-eu.toml
+    weaver gke deploy config/weaver/weaver-us.toml
+```
+
+# Additional info
 
 Setup MongoDB and RabbitMQ locally
 

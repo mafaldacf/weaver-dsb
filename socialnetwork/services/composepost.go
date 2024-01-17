@@ -104,7 +104,6 @@ func (c *composePost) ComposeAndUpload(ctx context.Context, username string) err
 		Body:        []byte(msgJSON),
 	}
 
-	//TODO: publish to all regions!!
 	for _, region := range c.Config().Regions {
 		routingKey := fmt.Sprintf("write-home-timeline-%s", region)
 		c.amqChannel.PublishWithContext(ctx, "write-home-timeline", routingKey, false, false, msg)

@@ -3,7 +3,7 @@
 # --------
 
 ["socialnetwork/services/ComposePost"]
-rabbitmq_address = "34.159.6.214"
+rabbitmq_address = "localhost"
 rabbitmq_port = 5672
 rabbitmq_username = "admin"
 rabbitmq_password = "admin"
@@ -11,16 +11,16 @@ region = "europe-west3"
 regions = ["europe-west3", "us-central1"]
 
 ["socialnetwork/services/PostStorage"]
-mongodb_address = "34.159.6.214"
+mongodb_address = "localhost"
 mongodb_port = 27017
 region = "europe-west3"
 
 ["socialnetwork/services/WriteHomeTimeline"]
-rabbitmq_address = "34.159.6.214"
+rabbitmq_address = "localhost"
 rabbitmq_port = 5672
 rabbitmq_username = "admin"
 rabbitmq_password = "admin"
-mongodb_address = "34.159.6.214"
+mongodb_address = "localhost"
 mongodb_port = 27017
 num_workers = 4
 region = "europe-west3"

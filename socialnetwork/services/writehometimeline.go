@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/ServiceWeaver/weaver"
+	"github.com/ServiceWeaver/weaver/metrics"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -39,6 +41,13 @@ type writeHomeTimeline struct {
 	weaver.WithConfig[writeHomeTimelineOptions]
 	mongoClient *mongo.Client
 }
+
+var (
+    inconsistencies = metrics.NewCounter(
+        "inconsistencies",
+        "The number of times an cross-service inconsistency has occured",
+    )
+)
 
 func (w *writeHomeTimeline) Init(ctx context.Context) error {
 	logger := w.Logger(ctx)
@@ -96,12 +105,15 @@ func (w *writeHomeTimeline) onReceivedWorker(ctx context.Context, body []byte) e
 	filter := bson.D{{Key: "postid", Value: msg.PostID}}
 	err = collection.FindOne(ctx, filter, nil).Decode(&post)
 	if err != nil {
-		logger.Error("error reading post from mongodb", "msg", err.Error())
-		return err
+		if strings.Contains(err.Error(), "no documents in result") {
+			logger.Debug("inconsistency!")
+			inconsistencies.Inc()
+		} else {
+			logger.Error("error reading post from mongodb", "msg", err.Error())
+		}
 	}
 
 	logger.Debug("found post! :)", "postid", post.PostID, "username", post.Username)
-
 	return nil
 }
 

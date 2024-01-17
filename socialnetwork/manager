@@ -6,7 +6,7 @@ import time
 import sys
 import json
 from plumbum import FG
-from plumbum.cmd import gcloud
+from plumbum.cmd import gcloud, terraform
 
 # -----------------
 # GCP configuration
@@ -235,7 +235,7 @@ def run():
   gcloud['compute', 'ssh', INSTANCE_NAME_US, '--zone', ZONE_US ,'--command', cmd] & FG
 
   # --- manager
-  cmd = f'sudo docker stack deploy --with-registry-auth --compose-file docker-compose.yml socialnetwork'
+  cmd = f'sudo docker stack deploy --with-registry-auth --compose-file ~/weaver-dsb-socialnetwork/docker-compose.yml socialnetwork'
   gcloud['compute', 'ssh', INSTANCE_NAME_MANAGER, '--command', cmd] & FG
 
   print("[INFO] ---- RUN DONE ----")
@@ -250,12 +250,26 @@ def destroy():
     delete_instance(name, zone)
   print("[INFO] ---- DESTROY DONE ----")
 
+def terraform_deploy():
+  print("[INFO] deploying...")
+  terraform['-chdir=./terraform', 'init'] & FG
+  terraform['-chdir=./terraform', 'apply'] & FG
+  # wait 30 seconds to install dependencies in all gpc instances
+  print("[INFO] waiting 90 seconds to install all dependencies in GCP instances...")
+  time.sleep(90)
+  print("[INFO] done!")
+  
+def terraform_clean():
+  print("[INFO] cleaning...")
+  terraform['-chdir=./terraform', 'destroy'] & FG
+  print("[INFO] done!")
+
 if __name__ == "__main__":
   main_parser = argparse.ArgumentParser()
   command_parser = main_parser.add_subparsers(help='commands', dest='command')
-  commands = ['build', 'deploy', 'run', 'info', 'destroy']
+  commands = ['terraform-deploy', 'terraform-clean', 'run']
   for cmd in commands:
       command_parser.add_parser(cmd)
   args = vars(main_parser.parse_args())
-  command = args.pop('command')
+  command = args.pop('command').replace('-', '_')
   getattr(sys.modules[__name__], command)(**args)
