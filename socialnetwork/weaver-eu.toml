@@ -3,6 +3,8 @@
 # --------
 
 ["socialnetwork/services/ComposePost"]
+redis_address = "localhost"
+redis_port = 6383
 rabbitmq_address = "localhost"
 rabbitmq_port = 5672
 rabbitmq_username = "admin"
@@ -23,6 +25,13 @@ rabbitmq_password = "admin"
 mongodb_address = "localhost"
 mongodb_port = 27017
 num_workers = 4
+region = "europe-west3"
+
+["socialnetwork/services/UserTimeline"]
+redis_address = "localhost"
+redis_port = 6383
+mongodb_address = "localhost"
+mongodb_port = 27017
 region = "europe-west3"
 
 # ----------

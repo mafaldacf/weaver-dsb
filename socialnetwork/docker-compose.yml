@@ -1,8 +1,23 @@
 version: '3.9'
 services:
-  # ----------------------
-  # POST STORAGE - MONGODB
-  # ----------------------
+  # ------------
+  # CACHE: REDIS
+  # ------------
+  user-timeline-redis:
+    image: redis
+    hostname: user-timeline-redis
+    ports:
+      - 6383:6379
+    restart: 'no'
+    deploy:
+      placement:
+        constraints: [node.hostname == node11]
+    networks:
+      - deathstarbench_network
+
+  # ------------------
+  # DATABASE: MONGODB
+  # ------------------
   post-storage-mongodb-setup:
     image: mongodb-setup:4.4.6
     restart: 'always'
@@ -52,9 +67,9 @@ services:
     networks:
       - deathstarbench_network
 
-  # ------------------------------
-  # WRITE HOME TIMELINE - RABBITMQ
-  # ------------------------------
+  # ---------------
+  # QUEUE: RABBITMQ
+  # ---------------
   write-home-timeline-rabbitmq-setup:
     image: rabbitmq-setup:3.8
     restart: 'no'

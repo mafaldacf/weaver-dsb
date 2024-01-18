@@ -4,22 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
+	"time"
+
+	"socialnetwork/services/model"
+	"socialnetwork/services/utils"
 
 	"github.com/ServiceWeaver/weaver"
 	"github.com/ServiceWeaver/weaver/metrics"
-	amqp "github.com/rabbitmq/amqp091-go"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
-
-type Message struct {
-	PostID int64 `json:"postid"`
-}
 
 type WriteHomeTimeline interface {
 	// WriteHomeTimeline service does not expose any rpc methods
@@ -43,27 +40,20 @@ type writeHomeTimeline struct {
 }
 
 var (
-    inconsistencies = metrics.NewCounter(
-        "inconsistencies",
-        "The number of times an cross-service inconsistency has occured",
-    )
+	inconsistencies = metrics.NewCounter(
+		"inconsistencies",
+		"The number of times an cross-service inconsistency has occured",
+	)
 )
 
 func (w *writeHomeTimeline) Init(ctx context.Context) error {
 	logger := w.Logger(ctx)
-
-	uri := fmt.Sprintf("mongodb://%s:%d/?directConnection=true", w.Config().MongoDBAddr, w.Config().MongoDBPort)
-	clientOptions := options.Client().ApplyURI(uri)
+	logger.Debug("initializing write home timeline service...")
 
 	var err error
-	w.mongoClient, err = mongo.Connect(ctx, clientOptions)
+	w.mongoClient, err = utils.MongoDBClient(ctx, w.Config().MongoDBAddr, w.Config().MongoDBPort)
 	if err != nil {
-		logger.Error("error connecting to mongodb", "msg", err.Error())
-		return err
-	}
-	err = w.mongoClient.Ping(ctx, nil)
-	if err != nil {
-		logger.Error("error validating connecting to mongodb", "msg", err.Error())
+		logger.Error(err.Error())
 		return err
 	}
 
@@ -84,7 +74,7 @@ func (w *writeHomeTimeline) Init(ctx context.Context) error {
 func (w *writeHomeTimeline) onReceivedWorker(ctx context.Context, body []byte) error {
 	logger := w.Logger(ctx)
 
-	var msg Message
+	var msg model.Message
 	err := json.Unmarshal(body, &msg)
 	if err != nil {
 		logger.Error("error parsing json message", "msg", err.Error())
@@ -93,19 +83,19 @@ func (w *writeHomeTimeline) onReceivedWorker(ctx context.Context, body []byte) e
 
 	logger.Debug("received rabbitmq message", "postid", msg.PostID)
 
-	trace.SpanFromContext(ctx).AddEvent("reading post",
+	trace.SpanFromContext(ctx).AddEvent("reading rabbitmq message",
 		trace.WithAttributes(
-			attribute.Int64("postid", msg.PostID),
+			attribute.Int64("queue_end_ms", time.Now().UnixMilli()),
 		))
 
 	db := w.mongoClient.Database("poststorage")
 	collection := db.Collection("posts")
 
-	var post Post
+	var post model.Post
 	filter := bson.D{{Key: "postid", Value: msg.PostID}}
 	err = collection.FindOne(ctx, filter, nil).Decode(&post)
 	if err != nil {
-		if strings.Contains(err.Error(), "no documents in result") {
+		if err == mongo.ErrNoDocuments {
 			logger.Debug("inconsistency!")
 			inconsistencies.Inc()
 		} else {
@@ -113,26 +103,19 @@ func (w *writeHomeTimeline) onReceivedWorker(ctx context.Context, body []byte) e
 		}
 	}
 
-	logger.Debug("found post! :)", "postid", post.PostID, "username", post.Username)
+	logger.Debug("found post! :)", "postid", post.PostID, "text", post.Text)
 	return nil
 }
 
 func (w *writeHomeTimeline) workerThread(ctx context.Context) error {
 	logger := w.Logger(ctx)
 
-	uri := fmt.Sprintf("amqp://%s:%s@%s:%d/", w.Config().RabbitMQUsername, w.Config().RabbitMQPassword, w.Config().RabbitMQAddr, w.Config().RabbitMQPort)
-	conn, err := amqp.Dial(uri)
+	ch, conn, err := utils.RabbitMQClient(ctx, w.Config().RabbitMQUsername, w.Config().RabbitMQPassword, w.Config().RabbitMQAddr, w.Config().RabbitMQPort)
 	if err != nil {
-		logger.Error("error establishing connection with rabbitmq", "msg", err.Error())
+		logger.Error(err.Error())
 		return err
 	}
 	defer conn.Close()
-
-	ch, err := conn.Channel()
-	if err != nil {
-		logger.Error("error openning channel for rabbitmq", "msg", err.Error())
-		return err
-	}
 	defer ch.Close()
 
 	err = ch.ExchangeDeclare("write-home-timeline", "topic", false, false, false, false, nil)

@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"reflect"
+	"socialnetwork/services/model"
 )
 
 func init() {
@@ -19,10 +20,10 @@ func init() {
 		Iface: reflect.TypeOf((*ComposePost)(nil)).Elem(),
 		Impl:  reflect.TypeOf(composePost{}),
 		LocalStubFn: func(impl any, caller string, tracer trace.Tracer) any {
-			return composePost_local_stub{impl: impl.(ComposePost), tracer: tracer, composeAndUploadMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "socialnetwork/services/ComposePost", Method: "ComposeAndUpload", Remote: false})}
+			return composePost_local_stub{impl: impl.(ComposePost), tracer: tracer, uploadCreatorMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "socialnetwork/services/ComposePost", Method: "UploadCreator", Remote: false}), uploadMediaMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "socialnetwork/services/ComposePost", Method: "UploadMedia", Remote: false}), uploadTextMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "socialnetwork/services/ComposePost", Method: "UploadText", Remote: false}), uploadUniqueIdMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "socialnetwork/services/ComposePost", Method: "UploadUniqueId", Remote: false}), uploadUrlsMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "socialnetwork/services/ComposePost", Method: "UploadUrls", Remote: false}), uploadUserMentionsMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "socialnetwork/services/ComposePost", Method: "UploadUserMentions", Remote: false})}
 		},
 		ClientStubFn: func(stub codegen.Stub, caller string) any {
-			return composePost_client_stub{stub: stub, composeAndUploadMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "socialnetwork/services/ComposePost", Method: "ComposeAndUpload", Remote: true})}
+			return composePost_client_stub{stub: stub, uploadCreatorMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "socialnetwork/services/ComposePost", Method: "UploadCreator", Remote: true}), uploadMediaMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "socialnetwork/services/ComposePost", Method: "UploadMedia", Remote: true}), uploadTextMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "socialnetwork/services/ComposePost", Method: "UploadText", Remote: true}), uploadUniqueIdMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "socialnetwork/services/ComposePost", Method: "UploadUniqueId", Remote: true}), uploadUrlsMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "socialnetwork/services/ComposePost", Method: "UploadUrls", Remote: true}), uploadUserMentionsMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "socialnetwork/services/ComposePost", Method: "UploadUserMentions", Remote: true})}
 		},
 		ServerStubFn: func(impl any, addLoad func(uint64, float64)) codegen.Server {
 			return composePost_server_stub{impl: impl.(ComposePost), addLoad: addLoad}
@@ -30,12 +31,13 @@ func init() {
 		ReflectStubFn: func(caller func(string, context.Context, []any, []any) error) any {
 			return composePost_reflect_stub{caller: caller}
 		},
-		RefData: "⟦d08a90ef:wEaVeReDgE:socialnetwork/services/ComposePost→socialnetwork/services/PostStorage⟧\n",
+		RefData: "⟦d08a90ef:wEaVeReDgE:socialnetwork/services/ComposePost→socialnetwork/services/PostStorage⟧\n⟦91d331da:wEaVeReDgE:socialnetwork/services/ComposePost→socialnetwork/services/UserTimeline⟧\n",
 	})
 	codegen.Register(codegen.Registration{
-		Name:  "socialnetwork/services/PostStorage",
-		Iface: reflect.TypeOf((*PostStorage)(nil)).Elem(),
-		Impl:  reflect.TypeOf(postStorage{}),
+		Name:    "socialnetwork/services/PostStorage",
+		Iface:   reflect.TypeOf((*PostStorage)(nil)).Elem(),
+		Impl:    reflect.TypeOf(postStorage{}),
+		NoRetry: []int{0},
 		LocalStubFn: func(impl any, caller string, tracer trace.Tracer) any {
 			return postStorage_local_stub{impl: impl.(PostStorage), tracer: tracer, storePostMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "socialnetwork/services/PostStorage", Method: "StorePost", Remote: false})}
 		},
@@ -47,6 +49,25 @@ func init() {
 		},
 		ReflectStubFn: func(caller func(string, context.Context, []any, []any) error) any {
 			return postStorage_reflect_stub{caller: caller}
+		},
+		RefData: "",
+	})
+	codegen.Register(codegen.Registration{
+		Name:    "socialnetwork/services/UserTimeline",
+		Iface:   reflect.TypeOf((*UserTimeline)(nil)).Elem(),
+		Impl:    reflect.TypeOf(userTimeline{}),
+		NoRetry: []int{0},
+		LocalStubFn: func(impl any, caller string, tracer trace.Tracer) any {
+			return userTimeline_local_stub{impl: impl.(UserTimeline), tracer: tracer, writeUserTimelineMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "socialnetwork/services/UserTimeline", Method: "WriteUserTimeline", Remote: false})}
+		},
+		ClientStubFn: func(stub codegen.Stub, caller string) any {
+			return userTimeline_client_stub{stub: stub, writeUserTimelineMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "socialnetwork/services/UserTimeline", Method: "WriteUserTimeline", Remote: true})}
+		},
+		ServerStubFn: func(impl any, addLoad func(uint64, float64)) codegen.Server {
+			return userTimeline_server_stub{impl: impl.(UserTimeline), addLoad: addLoad}
+		},
+		ReflectStubFn: func(caller func(string, context.Context, []any, []any) error) any {
+			return userTimeline_reflect_stub{caller: caller}
 		},
 		RefData: "",
 	})
@@ -71,32 +92,39 @@ func init() {
 // weaver.InstanceOf checks.
 var _ weaver.InstanceOf[ComposePost] = (*composePost)(nil)
 var _ weaver.InstanceOf[PostStorage] = (*postStorage)(nil)
+var _ weaver.InstanceOf[UserTimeline] = (*userTimeline)(nil)
 var _ weaver.InstanceOf[WriteHomeTimeline] = (*writeHomeTimeline)(nil)
 
 // weaver.Router checks.
 var _ weaver.Unrouted = (*composePost)(nil)
 var _ weaver.Unrouted = (*postStorage)(nil)
+var _ weaver.Unrouted = (*userTimeline)(nil)
 var _ weaver.Unrouted = (*writeHomeTimeline)(nil)
 
 // Local stub implementations.
 
 type composePost_local_stub struct {
-	impl                    ComposePost
-	tracer                  trace.Tracer
-	composeAndUploadMetrics *codegen.MethodMetrics
+	impl                      ComposePost
+	tracer                    trace.Tracer
+	uploadCreatorMetrics      *codegen.MethodMetrics
+	uploadMediaMetrics        *codegen.MethodMetrics
+	uploadTextMetrics         *codegen.MethodMetrics
+	uploadUniqueIdMetrics     *codegen.MethodMetrics
+	uploadUrlsMetrics         *codegen.MethodMetrics
+	uploadUserMentionsMetrics *codegen.MethodMetrics
 }
 
 // Check that composePost_local_stub implements the ComposePost interface.
 var _ ComposePost = (*composePost_local_stub)(nil)
 
-func (s composePost_local_stub) ComposeAndUpload(ctx context.Context, a0 string) (err error) {
+func (s composePost_local_stub) UploadCreator(ctx context.Context, a0 int64, a1 model.Creator) (err error) {
 	// Update metrics.
-	begin := s.composeAndUploadMetrics.Begin()
-	defer func() { s.composeAndUploadMetrics.End(begin, err != nil, 0, 0) }()
+	begin := s.uploadCreatorMetrics.Begin()
+	defer func() { s.uploadCreatorMetrics.End(begin, err != nil, 0, 0) }()
 	span := trace.SpanFromContext(ctx)
 	if span.SpanContext().IsValid() {
 		// Create a child span for this method.
-		ctx, span = s.tracer.Start(ctx, "services.ComposePost.ComposeAndUpload", trace.WithSpanKind(trace.SpanKindInternal))
+		ctx, span = s.tracer.Start(ctx, "services.ComposePost.UploadCreator", trace.WithSpanKind(trace.SpanKindInternal))
 		defer func() {
 			if err != nil {
 				span.RecordError(err)
@@ -106,7 +134,107 @@ func (s composePost_local_stub) ComposeAndUpload(ctx context.Context, a0 string)
 		}()
 	}
 
-	return s.impl.ComposeAndUpload(ctx, a0)
+	return s.impl.UploadCreator(ctx, a0, a1)
+}
+
+func (s composePost_local_stub) UploadMedia(ctx context.Context, a0 int64, a1 []model.Media) (err error) {
+	// Update metrics.
+	begin := s.uploadMediaMetrics.Begin()
+	defer func() { s.uploadMediaMetrics.End(begin, err != nil, 0, 0) }()
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		// Create a child span for this method.
+		ctx, span = s.tracer.Start(ctx, "services.ComposePost.UploadMedia", trace.WithSpanKind(trace.SpanKindInternal))
+		defer func() {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			span.End()
+		}()
+	}
+
+	return s.impl.UploadMedia(ctx, a0, a1)
+}
+
+func (s composePost_local_stub) UploadText(ctx context.Context, a0 int64, a1 string) (err error) {
+	// Update metrics.
+	begin := s.uploadTextMetrics.Begin()
+	defer func() { s.uploadTextMetrics.End(begin, err != nil, 0, 0) }()
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		// Create a child span for this method.
+		ctx, span = s.tracer.Start(ctx, "services.ComposePost.UploadText", trace.WithSpanKind(trace.SpanKindInternal))
+		defer func() {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			span.End()
+		}()
+	}
+
+	return s.impl.UploadText(ctx, a0, a1)
+}
+
+func (s composePost_local_stub) UploadUniqueId(ctx context.Context, a0 int64, a1 int64, a2 model.PostType) (err error) {
+	// Update metrics.
+	begin := s.uploadUniqueIdMetrics.Begin()
+	defer func() { s.uploadUniqueIdMetrics.End(begin, err != nil, 0, 0) }()
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		// Create a child span for this method.
+		ctx, span = s.tracer.Start(ctx, "services.ComposePost.UploadUniqueId", trace.WithSpanKind(trace.SpanKindInternal))
+		defer func() {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			span.End()
+		}()
+	}
+
+	return s.impl.UploadUniqueId(ctx, a0, a1, a2)
+}
+
+func (s composePost_local_stub) UploadUrls(ctx context.Context, a0 int64, a1 []model.URL) (err error) {
+	// Update metrics.
+	begin := s.uploadUrlsMetrics.Begin()
+	defer func() { s.uploadUrlsMetrics.End(begin, err != nil, 0, 0) }()
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		// Create a child span for this method.
+		ctx, span = s.tracer.Start(ctx, "services.ComposePost.UploadUrls", trace.WithSpanKind(trace.SpanKindInternal))
+		defer func() {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			span.End()
+		}()
+	}
+
+	return s.impl.UploadUrls(ctx, a0, a1)
+}
+
+func (s composePost_local_stub) UploadUserMentions(ctx context.Context, a0 int64, a1 []model.UserMention) (err error) {
+	// Update metrics.
+	begin := s.uploadUserMentionsMetrics.Begin()
+	defer func() { s.uploadUserMentionsMetrics.End(begin, err != nil, 0, 0) }()
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		// Create a child span for this method.
+		ctx, span = s.tracer.Start(ctx, "services.ComposePost.UploadUserMentions", trace.WithSpanKind(trace.SpanKindInternal))
+		defer func() {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			span.End()
+		}()
+	}
+
+	return s.impl.UploadUserMentions(ctx, a0, a1)
 }
 
 type postStorage_local_stub struct {
@@ -118,7 +246,7 @@ type postStorage_local_stub struct {
 // Check that postStorage_local_stub implements the PostStorage interface.
 var _ PostStorage = (*postStorage_local_stub)(nil)
 
-func (s postStorage_local_stub) StorePost(ctx context.Context, a0 string, a1 int64) (err error) {
+func (s postStorage_local_stub) StorePost(ctx context.Context, a0 int64, a1 model.Post) (err error) {
 	// Update metrics.
 	begin := s.storePostMetrics.Begin()
 	defer func() { s.storePostMetrics.End(begin, err != nil, 0, 0) }()
@@ -138,6 +266,35 @@ func (s postStorage_local_stub) StorePost(ctx context.Context, a0 string, a1 int
 	return s.impl.StorePost(ctx, a0, a1)
 }
 
+type userTimeline_local_stub struct {
+	impl                     UserTimeline
+	tracer                   trace.Tracer
+	writeUserTimelineMetrics *codegen.MethodMetrics
+}
+
+// Check that userTimeline_local_stub implements the UserTimeline interface.
+var _ UserTimeline = (*userTimeline_local_stub)(nil)
+
+func (s userTimeline_local_stub) WriteUserTimeline(ctx context.Context, a0 int64, a1 int64, a2 int64, a3 int64) (err error) {
+	// Update metrics.
+	begin := s.writeUserTimelineMetrics.Begin()
+	defer func() { s.writeUserTimelineMetrics.End(begin, err != nil, 0, 0) }()
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		// Create a child span for this method.
+		ctx, span = s.tracer.Start(ctx, "services.UserTimeline.WriteUserTimeline", trace.WithSpanKind(trace.SpanKindInternal))
+		defer func() {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			span.End()
+		}()
+	}
+
+	return s.impl.WriteUserTimeline(ctx, a0, a1, a2, a3)
+}
+
 type writeHomeTimeline_local_stub struct {
 	impl   WriteHomeTimeline
 	tracer trace.Tracer
@@ -149,23 +306,79 @@ var _ WriteHomeTimeline = (*writeHomeTimeline_local_stub)(nil)
 // Client stub implementations.
 
 type composePost_client_stub struct {
-	stub                    codegen.Stub
-	composeAndUploadMetrics *codegen.MethodMetrics
+	stub                      codegen.Stub
+	uploadCreatorMetrics      *codegen.MethodMetrics
+	uploadMediaMetrics        *codegen.MethodMetrics
+	uploadTextMetrics         *codegen.MethodMetrics
+	uploadUniqueIdMetrics     *codegen.MethodMetrics
+	uploadUrlsMetrics         *codegen.MethodMetrics
+	uploadUserMentionsMetrics *codegen.MethodMetrics
 }
 
 // Check that composePost_client_stub implements the ComposePost interface.
 var _ ComposePost = (*composePost_client_stub)(nil)
 
-func (s composePost_client_stub) ComposeAndUpload(ctx context.Context, a0 string) (err error) {
+func (s composePost_client_stub) UploadCreator(ctx context.Context, a0 int64, a1 model.Creator) (err error) {
 	// Update metrics.
 	var requestBytes, replyBytes int
-	begin := s.composeAndUploadMetrics.Begin()
-	defer func() { s.composeAndUploadMetrics.End(begin, err != nil, requestBytes, replyBytes) }()
+	begin := s.uploadCreatorMetrics.Begin()
+	defer func() { s.uploadCreatorMetrics.End(begin, err != nil, requestBytes, replyBytes) }()
 
 	span := trace.SpanFromContext(ctx)
 	if span.SpanContext().IsValid() {
 		// Create a child span for this method.
-		ctx, span = s.stub.Tracer().Start(ctx, "services.ComposePost.ComposeAndUpload", trace.WithSpanKind(trace.SpanKindClient))
+		ctx, span = s.stub.Tracer().Start(ctx, "services.ComposePost.UploadCreator", trace.WithSpanKind(trace.SpanKindClient))
+	}
+
+	defer func() {
+		// Catch and return any panics detected during encoding/decoding/rpc.
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+			if err != nil {
+				err = errors.Join(weaver.RemoteCallError, err)
+			}
+		}
+
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+
+	}()
+
+	// Encode arguments.
+	enc := codegen.NewEncoder()
+	enc.Int64(a0)
+	(a1).WeaverMarshal(enc)
+	var shardKey uint64
+
+	// Call the remote method.
+	requestBytes = len(enc.Data())
+	var results []byte
+	results, err = s.stub.Run(ctx, 0, enc.Data(), shardKey)
+	replyBytes = len(results)
+	if err != nil {
+		err = errors.Join(weaver.RemoteCallError, err)
+		return
+	}
+
+	// Decode the results.
+	dec := codegen.NewDecoder(results)
+	err = dec.Error()
+	return
+}
+
+func (s composePost_client_stub) UploadMedia(ctx context.Context, a0 int64, a1 []model.Media) (err error) {
+	// Update metrics.
+	var requestBytes, replyBytes int
+	begin := s.uploadMediaMetrics.Begin()
+	defer func() { s.uploadMediaMetrics.End(begin, err != nil, requestBytes, replyBytes) }()
+
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		// Create a child span for this method.
+		ctx, span = s.stub.Tracer().Start(ctx, "services.ComposePost.UploadMedia", trace.WithSpanKind(trace.SpanKindClient))
 	}
 
 	defer func() {
@@ -187,18 +400,237 @@ func (s composePost_client_stub) ComposeAndUpload(ctx context.Context, a0 string
 
 	// Preallocate a buffer of the right size.
 	size := 0
-	size += (4 + len(a0))
+	size += 8
+	size += (4 + (len(a1) * 0))
 	enc := codegen.NewEncoder()
 	enc.Reset(size)
 
 	// Encode arguments.
-	enc.String(a0)
+	enc.Int64(a0)
+	serviceweaver_enc_slice_Media_b602c25f(enc, a1)
 	var shardKey uint64
 
 	// Call the remote method.
 	requestBytes = len(enc.Data())
 	var results []byte
-	results, err = s.stub.Run(ctx, 0, enc.Data(), shardKey)
+	results, err = s.stub.Run(ctx, 1, enc.Data(), shardKey)
+	replyBytes = len(results)
+	if err != nil {
+		err = errors.Join(weaver.RemoteCallError, err)
+		return
+	}
+
+	// Decode the results.
+	dec := codegen.NewDecoder(results)
+	err = dec.Error()
+	return
+}
+
+func (s composePost_client_stub) UploadText(ctx context.Context, a0 int64, a1 string) (err error) {
+	// Update metrics.
+	var requestBytes, replyBytes int
+	begin := s.uploadTextMetrics.Begin()
+	defer func() { s.uploadTextMetrics.End(begin, err != nil, requestBytes, replyBytes) }()
+
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		// Create a child span for this method.
+		ctx, span = s.stub.Tracer().Start(ctx, "services.ComposePost.UploadText", trace.WithSpanKind(trace.SpanKindClient))
+	}
+
+	defer func() {
+		// Catch and return any panics detected during encoding/decoding/rpc.
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+			if err != nil {
+				err = errors.Join(weaver.RemoteCallError, err)
+			}
+		}
+
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+
+	}()
+
+	// Preallocate a buffer of the right size.
+	size := 0
+	size += 8
+	size += (4 + len(a1))
+	enc := codegen.NewEncoder()
+	enc.Reset(size)
+
+	// Encode arguments.
+	enc.Int64(a0)
+	enc.String(a1)
+	var shardKey uint64
+
+	// Call the remote method.
+	requestBytes = len(enc.Data())
+	var results []byte
+	results, err = s.stub.Run(ctx, 2, enc.Data(), shardKey)
+	replyBytes = len(results)
+	if err != nil {
+		err = errors.Join(weaver.RemoteCallError, err)
+		return
+	}
+
+	// Decode the results.
+	dec := codegen.NewDecoder(results)
+	err = dec.Error()
+	return
+}
+
+func (s composePost_client_stub) UploadUniqueId(ctx context.Context, a0 int64, a1 int64, a2 model.PostType) (err error) {
+	// Update metrics.
+	var requestBytes, replyBytes int
+	begin := s.uploadUniqueIdMetrics.Begin()
+	defer func() { s.uploadUniqueIdMetrics.End(begin, err != nil, requestBytes, replyBytes) }()
+
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		// Create a child span for this method.
+		ctx, span = s.stub.Tracer().Start(ctx, "services.ComposePost.UploadUniqueId", trace.WithSpanKind(trace.SpanKindClient))
+	}
+
+	defer func() {
+		// Catch and return any panics detected during encoding/decoding/rpc.
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+			if err != nil {
+				err = errors.Join(weaver.RemoteCallError, err)
+			}
+		}
+
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+
+	}()
+
+	// Encode arguments.
+	enc := codegen.NewEncoder()
+	enc.Int64(a0)
+	enc.Int64(a1)
+	enc.Int((int)(a2))
+	var shardKey uint64
+
+	// Call the remote method.
+	requestBytes = len(enc.Data())
+	var results []byte
+	results, err = s.stub.Run(ctx, 3, enc.Data(), shardKey)
+	replyBytes = len(results)
+	if err != nil {
+		err = errors.Join(weaver.RemoteCallError, err)
+		return
+	}
+
+	// Decode the results.
+	dec := codegen.NewDecoder(results)
+	err = dec.Error()
+	return
+}
+
+func (s composePost_client_stub) UploadUrls(ctx context.Context, a0 int64, a1 []model.URL) (err error) {
+	// Update metrics.
+	var requestBytes, replyBytes int
+	begin := s.uploadUrlsMetrics.Begin()
+	defer func() { s.uploadUrlsMetrics.End(begin, err != nil, requestBytes, replyBytes) }()
+
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		// Create a child span for this method.
+		ctx, span = s.stub.Tracer().Start(ctx, "services.ComposePost.UploadUrls", trace.WithSpanKind(trace.SpanKindClient))
+	}
+
+	defer func() {
+		// Catch and return any panics detected during encoding/decoding/rpc.
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+			if err != nil {
+				err = errors.Join(weaver.RemoteCallError, err)
+			}
+		}
+
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+
+	}()
+
+	// Preallocate a buffer of the right size.
+	size := 0
+	size += 8
+	size += (4 + (len(a1) * 0))
+	enc := codegen.NewEncoder()
+	enc.Reset(size)
+
+	// Encode arguments.
+	enc.Int64(a0)
+	serviceweaver_enc_slice_URL_45edd764(enc, a1)
+	var shardKey uint64
+
+	// Call the remote method.
+	requestBytes = len(enc.Data())
+	var results []byte
+	results, err = s.stub.Run(ctx, 4, enc.Data(), shardKey)
+	replyBytes = len(results)
+	if err != nil {
+		err = errors.Join(weaver.RemoteCallError, err)
+		return
+	}
+
+	// Decode the results.
+	dec := codegen.NewDecoder(results)
+	err = dec.Error()
+	return
+}
+
+func (s composePost_client_stub) UploadUserMentions(ctx context.Context, a0 int64, a1 []model.UserMention) (err error) {
+	// Update metrics.
+	var requestBytes, replyBytes int
+	begin := s.uploadUserMentionsMetrics.Begin()
+	defer func() { s.uploadUserMentionsMetrics.End(begin, err != nil, requestBytes, replyBytes) }()
+
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		// Create a child span for this method.
+		ctx, span = s.stub.Tracer().Start(ctx, "services.ComposePost.UploadUserMentions", trace.WithSpanKind(trace.SpanKindClient))
+	}
+
+	defer func() {
+		// Catch and return any panics detected during encoding/decoding/rpc.
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+			if err != nil {
+				err = errors.Join(weaver.RemoteCallError, err)
+			}
+		}
+
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+
+	}()
+
+	// Encode arguments.
+	enc := codegen.NewEncoder()
+	enc.Int64(a0)
+	serviceweaver_enc_slice_UserMention_cf022f4a(enc, a1)
+	var shardKey uint64
+
+	// Call the remote method.
+	requestBytes = len(enc.Data())
+	var results []byte
+	results, err = s.stub.Run(ctx, 5, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
 		err = errors.Join(weaver.RemoteCallError, err)
@@ -219,7 +651,7 @@ type postStorage_client_stub struct {
 // Check that postStorage_client_stub implements the PostStorage interface.
 var _ PostStorage = (*postStorage_client_stub)(nil)
 
-func (s postStorage_client_stub) StorePost(ctx context.Context, a0 string, a1 int64) (err error) {
+func (s postStorage_client_stub) StorePost(ctx context.Context, a0 int64, a1 model.Post) (err error) {
 	// Update metrics.
 	var requestBytes, replyBytes int
 	begin := s.storePostMetrics.Begin()
@@ -248,16 +680,79 @@ func (s postStorage_client_stub) StorePost(ctx context.Context, a0 string, a1 in
 
 	}()
 
+	// Encode arguments.
+	enc := codegen.NewEncoder()
+	enc.Int64(a0)
+	(a1).WeaverMarshal(enc)
+	var shardKey uint64
+
+	// Call the remote method.
+	requestBytes = len(enc.Data())
+	var results []byte
+	results, err = s.stub.Run(ctx, 0, enc.Data(), shardKey)
+	replyBytes = len(results)
+	if err != nil {
+		err = errors.Join(weaver.RemoteCallError, err)
+		return
+	}
+
+	// Decode the results.
+	dec := codegen.NewDecoder(results)
+	err = dec.Error()
+	return
+}
+
+type userTimeline_client_stub struct {
+	stub                     codegen.Stub
+	writeUserTimelineMetrics *codegen.MethodMetrics
+}
+
+// Check that userTimeline_client_stub implements the UserTimeline interface.
+var _ UserTimeline = (*userTimeline_client_stub)(nil)
+
+func (s userTimeline_client_stub) WriteUserTimeline(ctx context.Context, a0 int64, a1 int64, a2 int64, a3 int64) (err error) {
+	// Update metrics.
+	var requestBytes, replyBytes int
+	begin := s.writeUserTimelineMetrics.Begin()
+	defer func() { s.writeUserTimelineMetrics.End(begin, err != nil, requestBytes, replyBytes) }()
+
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		// Create a child span for this method.
+		ctx, span = s.stub.Tracer().Start(ctx, "services.UserTimeline.WriteUserTimeline", trace.WithSpanKind(trace.SpanKindClient))
+	}
+
+	defer func() {
+		// Catch and return any panics detected during encoding/decoding/rpc.
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+			if err != nil {
+				err = errors.Join(weaver.RemoteCallError, err)
+			}
+		}
+
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+
+	}()
+
 	// Preallocate a buffer of the right size.
 	size := 0
-	size += (4 + len(a0))
+	size += 8
+	size += 8
+	size += 8
 	size += 8
 	enc := codegen.NewEncoder()
 	enc.Reset(size)
 
 	// Encode arguments.
-	enc.String(a0)
+	enc.Int64(a0)
 	enc.Int64(a1)
+	enc.Int64(a2)
+	enc.Int64(a3)
 	var shardKey uint64
 
 	// Call the remote method.
@@ -319,14 +814,24 @@ var _ codegen.Server = (*composePost_server_stub)(nil)
 // GetStubFn implements the codegen.Server interface.
 func (s composePost_server_stub) GetStubFn(method string) func(ctx context.Context, args []byte) ([]byte, error) {
 	switch method {
-	case "ComposeAndUpload":
-		return s.composeAndUpload
+	case "UploadCreator":
+		return s.uploadCreator
+	case "UploadMedia":
+		return s.uploadMedia
+	case "UploadText":
+		return s.uploadText
+	case "UploadUniqueId":
+		return s.uploadUniqueId
+	case "UploadUrls":
+		return s.uploadUrls
+	case "UploadUserMentions":
+		return s.uploadUserMentions
 	default:
 		return nil
 	}
 }
 
-func (s composePost_server_stub) composeAndUpload(ctx context.Context, args []byte) (res []byte, err error) {
+func (s composePost_server_stub) uploadCreator(ctx context.Context, args []byte) (res []byte, err error) {
 	// Catch and return any panics detected during encoding/decoding/rpc.
 	defer func() {
 		if err == nil {
@@ -336,13 +841,147 @@ func (s composePost_server_stub) composeAndUpload(ctx context.Context, args []by
 
 	// Decode arguments.
 	dec := codegen.NewDecoder(args)
-	var a0 string
-	a0 = dec.String()
+	var a0 int64
+	a0 = dec.Int64()
+	var a1 model.Creator
+	(&a1).WeaverUnmarshal(dec)
 
 	// TODO(rgrandl): The deferred function above will recover from panics in the
 	// user code: fix this.
 	// Call the local method.
-	appErr := s.impl.ComposeAndUpload(ctx, a0)
+	appErr := s.impl.UploadCreator(ctx, a0, a1)
+
+	// Encode the results.
+	enc := codegen.NewEncoder()
+	enc.Error(appErr)
+	return enc.Data(), nil
+}
+
+func (s composePost_server_stub) uploadMedia(ctx context.Context, args []byte) (res []byte, err error) {
+	// Catch and return any panics detected during encoding/decoding/rpc.
+	defer func() {
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+		}
+	}()
+
+	// Decode arguments.
+	dec := codegen.NewDecoder(args)
+	var a0 int64
+	a0 = dec.Int64()
+	var a1 []model.Media
+	a1 = serviceweaver_dec_slice_Media_b602c25f(dec)
+
+	// TODO(rgrandl): The deferred function above will recover from panics in the
+	// user code: fix this.
+	// Call the local method.
+	appErr := s.impl.UploadMedia(ctx, a0, a1)
+
+	// Encode the results.
+	enc := codegen.NewEncoder()
+	enc.Error(appErr)
+	return enc.Data(), nil
+}
+
+func (s composePost_server_stub) uploadText(ctx context.Context, args []byte) (res []byte, err error) {
+	// Catch and return any panics detected during encoding/decoding/rpc.
+	defer func() {
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+		}
+	}()
+
+	// Decode arguments.
+	dec := codegen.NewDecoder(args)
+	var a0 int64
+	a0 = dec.Int64()
+	var a1 string
+	a1 = dec.String()
+
+	// TODO(rgrandl): The deferred function above will recover from panics in the
+	// user code: fix this.
+	// Call the local method.
+	appErr := s.impl.UploadText(ctx, a0, a1)
+
+	// Encode the results.
+	enc := codegen.NewEncoder()
+	enc.Error(appErr)
+	return enc.Data(), nil
+}
+
+func (s composePost_server_stub) uploadUniqueId(ctx context.Context, args []byte) (res []byte, err error) {
+	// Catch and return any panics detected during encoding/decoding/rpc.
+	defer func() {
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+		}
+	}()
+
+	// Decode arguments.
+	dec := codegen.NewDecoder(args)
+	var a0 int64
+	a0 = dec.Int64()
+	var a1 int64
+	a1 = dec.Int64()
+	var a2 model.PostType
+	*(*int)(&a2) = dec.Int()
+
+	// TODO(rgrandl): The deferred function above will recover from panics in the
+	// user code: fix this.
+	// Call the local method.
+	appErr := s.impl.UploadUniqueId(ctx, a0, a1, a2)
+
+	// Encode the results.
+	enc := codegen.NewEncoder()
+	enc.Error(appErr)
+	return enc.Data(), nil
+}
+
+func (s composePost_server_stub) uploadUrls(ctx context.Context, args []byte) (res []byte, err error) {
+	// Catch and return any panics detected during encoding/decoding/rpc.
+	defer func() {
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+		}
+	}()
+
+	// Decode arguments.
+	dec := codegen.NewDecoder(args)
+	var a0 int64
+	a0 = dec.Int64()
+	var a1 []model.URL
+	a1 = serviceweaver_dec_slice_URL_45edd764(dec)
+
+	// TODO(rgrandl): The deferred function above will recover from panics in the
+	// user code: fix this.
+	// Call the local method.
+	appErr := s.impl.UploadUrls(ctx, a0, a1)
+
+	// Encode the results.
+	enc := codegen.NewEncoder()
+	enc.Error(appErr)
+	return enc.Data(), nil
+}
+
+func (s composePost_server_stub) uploadUserMentions(ctx context.Context, args []byte) (res []byte, err error) {
+	// Catch and return any panics detected during encoding/decoding/rpc.
+	defer func() {
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+		}
+	}()
+
+	// Decode arguments.
+	dec := codegen.NewDecoder(args)
+	var a0 int64
+	a0 = dec.Int64()
+	var a1 []model.UserMention
+	a1 = serviceweaver_dec_slice_UserMention_cf022f4a(dec)
+
+	// TODO(rgrandl): The deferred function above will recover from panics in the
+	// user code: fix this.
+	// Call the local method.
+	appErr := s.impl.UploadUserMentions(ctx, a0, a1)
 
 	// Encode the results.
 	enc := codegen.NewEncoder()
@@ -378,15 +1017,63 @@ func (s postStorage_server_stub) storePost(ctx context.Context, args []byte) (re
 
 	// Decode arguments.
 	dec := codegen.NewDecoder(args)
-	var a0 string
-	a0 = dec.String()
-	var a1 int64
-	a1 = dec.Int64()
+	var a0 int64
+	a0 = dec.Int64()
+	var a1 model.Post
+	(&a1).WeaverUnmarshal(dec)
 
 	// TODO(rgrandl): The deferred function above will recover from panics in the
 	// user code: fix this.
 	// Call the local method.
 	appErr := s.impl.StorePost(ctx, a0, a1)
+
+	// Encode the results.
+	enc := codegen.NewEncoder()
+	enc.Error(appErr)
+	return enc.Data(), nil
+}
+
+type userTimeline_server_stub struct {
+	impl    UserTimeline
+	addLoad func(key uint64, load float64)
+}
+
+// Check that userTimeline_server_stub implements the codegen.Server interface.
+var _ codegen.Server = (*userTimeline_server_stub)(nil)
+
+// GetStubFn implements the codegen.Server interface.
+func (s userTimeline_server_stub) GetStubFn(method string) func(ctx context.Context, args []byte) ([]byte, error) {
+	switch method {
+	case "WriteUserTimeline":
+		return s.writeUserTimeline
+	default:
+		return nil
+	}
+}
+
+func (s userTimeline_server_stub) writeUserTimeline(ctx context.Context, args []byte) (res []byte, err error) {
+	// Catch and return any panics detected during encoding/decoding/rpc.
+	defer func() {
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+		}
+	}()
+
+	// Decode arguments.
+	dec := codegen.NewDecoder(args)
+	var a0 int64
+	a0 = dec.Int64()
+	var a1 int64
+	a1 = dec.Int64()
+	var a2 int64
+	a2 = dec.Int64()
+	var a3 int64
+	a3 = dec.Int64()
+
+	// TODO(rgrandl): The deferred function above will recover from panics in the
+	// user code: fix this.
+	// Call the local method.
+	appErr := s.impl.WriteUserTimeline(ctx, a0, a1, a2, a3)
 
 	// Encode the results.
 	enc := codegen.NewEncoder()
@@ -419,8 +1106,33 @@ type composePost_reflect_stub struct {
 // Check that composePost_reflect_stub implements the ComposePost interface.
 var _ ComposePost = (*composePost_reflect_stub)(nil)
 
-func (s composePost_reflect_stub) ComposeAndUpload(ctx context.Context, a0 string) (err error) {
-	err = s.caller("ComposeAndUpload", ctx, []any{a0}, []any{})
+func (s composePost_reflect_stub) UploadCreator(ctx context.Context, a0 int64, a1 model.Creator) (err error) {
+	err = s.caller("UploadCreator", ctx, []any{a0, a1}, []any{})
+	return
+}
+
+func (s composePost_reflect_stub) UploadMedia(ctx context.Context, a0 int64, a1 []model.Media) (err error) {
+	err = s.caller("UploadMedia", ctx, []any{a0, a1}, []any{})
+	return
+}
+
+func (s composePost_reflect_stub) UploadText(ctx context.Context, a0 int64, a1 string) (err error) {
+	err = s.caller("UploadText", ctx, []any{a0, a1}, []any{})
+	return
+}
+
+func (s composePost_reflect_stub) UploadUniqueId(ctx context.Context, a0 int64, a1 int64, a2 model.PostType) (err error) {
+	err = s.caller("UploadUniqueId", ctx, []any{a0, a1, a2}, []any{})
+	return
+}
+
+func (s composePost_reflect_stub) UploadUrls(ctx context.Context, a0 int64, a1 []model.URL) (err error) {
+	err = s.caller("UploadUrls", ctx, []any{a0, a1}, []any{})
+	return
+}
+
+func (s composePost_reflect_stub) UploadUserMentions(ctx context.Context, a0 int64, a1 []model.UserMention) (err error) {
+	err = s.caller("UploadUserMentions", ctx, []any{a0, a1}, []any{})
 	return
 }
 
@@ -431,8 +1143,20 @@ type postStorage_reflect_stub struct {
 // Check that postStorage_reflect_stub implements the PostStorage interface.
 var _ PostStorage = (*postStorage_reflect_stub)(nil)
 
-func (s postStorage_reflect_stub) StorePost(ctx context.Context, a0 string, a1 int64) (err error) {
+func (s postStorage_reflect_stub) StorePost(ctx context.Context, a0 int64, a1 model.Post) (err error) {
 	err = s.caller("StorePost", ctx, []any{a0, a1}, []any{})
+	return
+}
+
+type userTimeline_reflect_stub struct {
+	caller func(string, context.Context, []any, []any) error
+}
+
+// Check that userTimeline_reflect_stub implements the UserTimeline interface.
+var _ UserTimeline = (*userTimeline_reflect_stub)(nil)
+
+func (s userTimeline_reflect_stub) WriteUserTimeline(ctx context.Context, a0 int64, a1 int64, a2 int64, a3 int64) (err error) {
+	err = s.caller("WriteUserTimeline", ctx, []any{a0, a1, a2, a3}, []any{})
 	return
 }
 
@@ -443,3 +1167,91 @@ type writeHomeTimeline_reflect_stub struct {
 // Check that writeHomeTimeline_reflect_stub implements the WriteHomeTimeline interface.
 var _ WriteHomeTimeline = (*writeHomeTimeline_reflect_stub)(nil)
 
+// Encoding/decoding implementations.
+
+func serviceweaver_enc_slice_Media_b602c25f(enc *codegen.Encoder, arg []model.Media) {
+	if arg == nil {
+		enc.Len(-1)
+		return
+	}
+	enc.Len(len(arg))
+	for i := 0; i < len(arg); i++ {
+		(arg[i]).WeaverMarshal(enc)
+	}
+}
+
+func serviceweaver_dec_slice_Media_b602c25f(dec *codegen.Decoder) []model.Media {
+	n := dec.Len()
+	if n == -1 {
+		return nil
+	}
+	res := make([]model.Media, n)
+	for i := 0; i < n; i++ {
+		(&res[i]).WeaverUnmarshal(dec)
+	}
+	return res
+}
+
+func serviceweaver_enc_slice_URL_45edd764(enc *codegen.Encoder, arg []model.URL) {
+	if arg == nil {
+		enc.Len(-1)
+		return
+	}
+	enc.Len(len(arg))
+	for i := 0; i < len(arg); i++ {
+		(arg[i]).WeaverMarshal(enc)
+	}
+}
+
+func serviceweaver_dec_slice_URL_45edd764(dec *codegen.Decoder) []model.URL {
+	n := dec.Len()
+	if n == -1 {
+		return nil
+	}
+	res := make([]model.URL, n)
+	for i := 0; i < n; i++ {
+		(&res[i]).WeaverUnmarshal(dec)
+	}
+	return res
+}
+
+func serviceweaver_enc_slice_UserMention_cf022f4a(enc *codegen.Encoder, arg []model.UserMention) {
+	if arg == nil {
+		enc.Len(-1)
+		return
+	}
+	enc.Len(len(arg))
+	for i := 0; i < len(arg); i++ {
+		(arg[i]).WeaverMarshal(enc)
+	}
+}
+
+func serviceweaver_dec_slice_UserMention_cf022f4a(dec *codegen.Decoder) []model.UserMention {
+	n := dec.Len()
+	if n == -1 {
+		return nil
+	}
+	res := make([]model.UserMention, n)
+	for i := 0; i < n; i++ {
+		(&res[i]).WeaverUnmarshal(dec)
+	}
+	return res
+}
+
+// Size implementations.
+
+// serviceweaver_size_Media_f7a12b18 returns the size (in bytes) of the serialization
+// of the provided type.
+func serviceweaver_size_Media_f7a12b18(x *model.Media) int {
+	size := 0
+	size += 0
+	return size
+}
+
+// serviceweaver_size_URL_5430e6db returns the size (in bytes) of the serialization
+// of the provided type.
+func serviceweaver_size_URL_5430e6db(x *model.URL) int {
+	size := 0
+	size += 0
+	return size
+}

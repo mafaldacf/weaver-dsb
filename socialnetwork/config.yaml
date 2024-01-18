@@ -1,0 +1,6 @@
+appConfig: weaver.toml
+repo: docker.io/mafaldacf
+
+listeners:
+  - name: wrk2
+    public: true

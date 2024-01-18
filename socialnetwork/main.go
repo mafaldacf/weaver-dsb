@@ -1,4 +1,4 @@
-//go:generate weaver generate . ./services
+//go:generate weaver generate . ./services ./services/model
 
 package main
 
@@ -6,10 +6,15 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"socialnetwork/services"
+	"socialnetwork/services/model"
+	"time"
 
 	"github.com/ServiceWeaver/weaver"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func main() {
@@ -38,7 +43,19 @@ func (s *server) composePostHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.Logger(ctx)
 	logger.Info("entering rootHandler")
 
-	err := s.composePost.Get().ComposeAndUpload(ctx, "google")
+	trace.SpanFromContext(r.Context()).AddEvent("handling http requesdt",
+		trace.WithAttributes(
+			attribute.String("content", "hello there"),
+		))
+
+	rand := rand.New(rand.NewSource(time.Now().UnixNano()))
+	reqID := rand.Int63()
+	creator := model.Creator {
+		UserID: 0,
+		Username: "user_0",
+	}
+
+	err := s.composePost.Get().UploadCreator(ctx, reqID, creator)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
