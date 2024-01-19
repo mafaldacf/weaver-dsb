@@ -11,25 +11,38 @@ type Message struct {
 
 type Creator struct {
 	weaver.AutoMarshal
-	UserID 		int64
-	Username 	string 
+	UserID 		int64 	`bson:"user_id"`
+	Username 	string  `bson:"username"`
 }
+
+type MediaType string
 
 type Media struct {
 	weaver.AutoMarshal
+	MediaID int64  	 	`bson:"media_id"`
+	MediaType MediaType `bson:"media_type"`
 }
 
 type URL struct {
 	weaver.AutoMarshal
+	ShortenURL 	string 	`bson:"shorten_url"`
+	ExpandedURL string 	`bson:"expanded_url"`
 }
 
 type UserMention struct {
 	weaver.AutoMarshal
-	UserID 		int64
-	Username 	string
+	UserID 		int64 	`bson:"user_id"`
+	Username 	string 	`bson:"username"`
 }
 
 type PostType int
+
+const (
+    POST_TYPE_POST PostType = iota 		// 0
+    POST_TYPE_REPOST 					// 1
+    POST_TYPE_REPLY 					// 2
+    POST_TYPE_DM 						// 3
+)
 
 type Post struct {
 	// make post serializable

@@ -2,7 +2,8 @@ package services
 
 import (
 	"context"
-	"socialnetwork/services/utils"
+	
+	"socialnetwork/pkg/storage"
 
 	"github.com/ServiceWeaver/weaver"
 	"github.com/redis/go-redis/v9"
@@ -10,13 +11,13 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-type UserTimeline interface {
+type UserTimelineService interface {
 	WriteUserTimeline(ctx context.Context, reqID int64, postID int64, userID int64, timestamp int64) error
 }
 
-var _ weaver.NotRetriable = UserTimeline.WriteUserTimeline
+var _ weaver.NotRetriable = UserTimelineService.WriteUserTimeline
 
-type userTimelineOptions struct {
+type userTimelineServiceOptions struct {
 	MongoDBAddr string `toml:"mongodb_address"`
 	MongoDBPort int    `toml:"mongodb_port"`
 	RedisAddr   string `toml:"redis_address"`
@@ -24,9 +25,9 @@ type userTimelineOptions struct {
 	Region      string `toml:"region"`
 }
 
-type userTimeline struct {
-	weaver.Implements[UserTimeline]
-	weaver.WithConfig[userTimelineOptions]
+type userTimelineService struct {
+	weaver.Implements[UserTimelineService]
+	weaver.WithConfig[userTimelineServiceOptions]
 	mongoClient *mongo.Client
 	redisClient *redis.Client
 }
@@ -41,26 +42,26 @@ type Timeline struct {
 	Posts  []UserPost
 }
 
-func (u *userTimeline) Init(ctx context.Context) error {
+func (u *userTimelineService) Init(ctx context.Context) error {
 	logger := u.Logger(ctx)
 	logger.Debug("initializing user timeline service...")
 
 	var err error
-	u.mongoClient, err = utils.MongoDBClient(ctx, u.Config().MongoDBAddr, u.Config().MongoDBPort)
+	u.mongoClient, err = storage.MongoDBClient(ctx, u.Config().MongoDBAddr, u.Config().MongoDBPort)
 	if err != nil {
 		logger.Error(err.Error())
 		return err
 	}
 
-	u.redisClient = utils.RedisClient(u.Config().RedisAddr, u.Config().RedisPort)
+	u.redisClient = storage.RedisClient(u.Config().RedisAddr, u.Config().RedisPort)
 
 	logger.Info("user timeline service running!", "region", u.Config().Region, "mongodb_addr", u.Config().MongoDBAddr, "mongodb_port", u.Config().MongoDBPort)
 	return nil
 }
 
-func (u *userTimeline) WriteUserTimeline(ctx context.Context, reqID int64, postID int64, userID int64, timestamp int64) error {
+func (u *userTimelineService) WriteUserTimeline(ctx context.Context, reqID int64, postID int64, userID int64, timestamp int64) error {
 	logger := u.Logger(ctx)
-	logger.Info("entering WriteUserTimeline for userTimeline service", "reqID", reqID, "postID", postID, "userID", userID, "timestamp", timestamp)
+	logger.Info("entering WriteUserTimeline for userTimelineService service", "reqID", reqID, "postID", postID, "userID", userID, "timestamp", timestamp)
 
 	collection := u.mongoClient.Database("user-timeline").Collection("user-timeline")
 
@@ -80,6 +81,6 @@ func (u *userTimeline) WriteUserTimeline(ctx context.Context, reqID int64, postI
 	})
 
 	// TODO UPDATE
-
+	logger.Info("updating current user timeline")
 	return nil
 }

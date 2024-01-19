@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"socialnetwork/services/model"
-	"socialnetwork/services/utils"
+	"socialnetwork/pkg/model"
+	"socialnetwork/pkg/storage"
 
 	"github.com/ServiceWeaver/weaver"
 	"github.com/ServiceWeaver/weaver/metrics"
@@ -18,11 +18,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-type WriteHomeTimeline interface {
-	// WriteHomeTimeline service does not expose any rpc methods
+type WriteHomeTimelineService interface {
+	// WriteHomeTimelineService service does not expose any rpc methods
 }
 
-type writeHomeTimelineOptions struct {
+type writeHomeTimelineServiceOptions struct {
 	RabbitMQAddr     string `toml:"rabbitmq_address"`
 	RabbitMQPort     int    `toml:"rabbitmq_port"`
 	RabbitMQUsername string `toml:"rabbitmq_username"`
@@ -33,9 +33,9 @@ type writeHomeTimelineOptions struct {
 	Region           string `toml:"region"`
 }
 
-type writeHomeTimeline struct {
-	weaver.Implements[WriteHomeTimeline]
-	weaver.WithConfig[writeHomeTimelineOptions]
+type writeHomeTimelineService struct {
+	weaver.Implements[WriteHomeTimelineService]
+	weaver.WithConfig[writeHomeTimelineServiceOptions]
 	mongoClient *mongo.Client
 }
 
@@ -46,18 +46,18 @@ var (
 	)
 )
 
-func (w *writeHomeTimeline) Init(ctx context.Context) error {
+func (w *writeHomeTimelineService) Init(ctx context.Context) error {
 	logger := w.Logger(ctx)
 	logger.Debug("initializing write home timeline service...")
 
 	var err error
-	w.mongoClient, err = utils.MongoDBClient(ctx, w.Config().MongoDBAddr, w.Config().MongoDBPort)
+	w.mongoClient, err = storage.MongoDBClient(ctx, w.Config().MongoDBAddr, w.Config().MongoDBPort)
 	if err != nil {
 		logger.Error(err.Error())
 		return err
 	}
 
-	logger.Info("initializing workers for WriteHomeTimeline service", "region", w.Config().Region, "nworkers", w.Config().NumWorkers, "rabbitmq_addr", w.Config().RabbitMQAddr, "rabbitmq_port", w.Config().RabbitMQPort)
+	logger.Info("initializing workers for WriteHomeTimelineService service", "region", w.Config().Region, "nworkers", w.Config().NumWorkers, "rabbitmq_addr", w.Config().RabbitMQAddr, "rabbitmq_port", w.Config().RabbitMQPort)
 	var wg sync.WaitGroup
 	wg.Add(w.Config().NumWorkers)
 	for i := 1; i <= w.Config().NumWorkers; i++ {
@@ -71,7 +71,7 @@ func (w *writeHomeTimeline) Init(ctx context.Context) error {
 	return nil
 }
 
-func (w *writeHomeTimeline) onReceivedWorker(ctx context.Context, body []byte) error {
+func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []byte) error {
 	logger := w.Logger(ctx)
 
 	var msg model.Message
@@ -92,7 +92,7 @@ func (w *writeHomeTimeline) onReceivedWorker(ctx context.Context, body []byte) e
 	collection := db.Collection("posts")
 
 	var post model.Post
-	filter := bson.D{{Key: "postid", Value: msg.PostID}}
+	filter := bson.D{{Key: "post_id", Value: msg.PostID}}
 	err = collection.FindOne(ctx, filter, nil).Decode(&post)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -101,16 +101,17 @@ func (w *writeHomeTimeline) onReceivedWorker(ctx context.Context, body []byte) e
 		} else {
 			logger.Error("error reading post from mongodb", "msg", err.Error())
 		}
+	} else {
+		logger.Debug("found post! :)", "postid", post.PostID, "text", post.Text)
 	}
 
-	logger.Debug("found post! :)", "postid", post.PostID, "text", post.Text)
 	return nil
 }
 
-func (w *writeHomeTimeline) workerThread(ctx context.Context) error {
+func (w *writeHomeTimelineService) workerThread(ctx context.Context) error {
 	logger := w.Logger(ctx)
 
-	ch, conn, err := utils.RabbitMQClient(ctx, w.Config().RabbitMQUsername, w.Config().RabbitMQPassword, w.Config().RabbitMQAddr, w.Config().RabbitMQPort)
+	ch, conn, err := storage.RabbitMQClient(ctx, w.Config().RabbitMQUsername, w.Config().RabbitMQPassword, w.Config().RabbitMQAddr, w.Config().RabbitMQPort)
 	if err != nil {
 		logger.Error(err.Error())
 		return err

@@ -5,4 +5,4 @@ socialnetwork/terraform/.terraform
 socialnetwork/terraform/.terraform.lock.hcl
 socialnetwork/terraform/terraform.tfstate
 socialnetwork/terraform/terraform.tfstate.backup
-socialnetwork/services/model/weaver_gen.go
+**/weaver_gen.go

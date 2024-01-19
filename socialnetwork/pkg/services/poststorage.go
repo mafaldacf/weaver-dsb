@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"socialnetwork/services/model"
-	"socialnetwork/services/utils"
+	"socialnetwork/pkg/model"
+	"socialnetwork/pkg/storage"
 
 	"github.com/ServiceWeaver/weaver"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -13,30 +13,30 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-type PostStorage interface {
+type PostStorageService interface {
 	StorePost(ctx context.Context, reqID int64, post model.Post) error
 }
 
-var _ weaver.NotRetriable = PostStorage.StorePost
+var _ weaver.NotRetriable = PostStorageService.StorePost
 
-type postStorageOptions struct {
+type postStorageServiceOptions struct {
 	MongoDBAddr string `toml:"mongodb_address"`
 	MongoDBPort int    `toml:"mongodb_port"`
 	Region      string `toml:"region"`
 }
 
-type postStorage struct {
-	weaver.Implements[PostStorage]
-	weaver.WithConfig[postStorageOptions]
+type postStorageService struct {
+	weaver.Implements[PostStorageService]
+	weaver.WithConfig[postStorageServiceOptions]
 	mongoClient *mongo.Client
 }
 
-func (p *postStorage) Init(ctx context.Context) error {
+func (p *postStorageService) Init(ctx context.Context) error {
 	logger := p.Logger(ctx)
 	logger.Debug("initializing post storage service...")
 
 	var err error
-	p.mongoClient, err = utils.MongoDBClient(ctx, p.Config().MongoDBAddr, p.Config().MongoDBPort)
+	p.mongoClient, err = storage.MongoDBClient(ctx, p.Config().MongoDBAddr, p.Config().MongoDBPort)
 	if err != nil {
 		logger.Error(err.Error())
 		return err
@@ -46,7 +46,7 @@ func (p *postStorage) Init(ctx context.Context) error {
 	return nil
 }
 
-func (p *postStorage) StorePost(ctx context.Context, reqID int64, post model.Post) error {
+func (p *postStorageService) StorePost(ctx context.Context, reqID int64, post model.Post) error {
 	logger := p.Logger(ctx)
 	logger.Info("entering StorePost for PostStorage service", "reqid", reqID, "post", post)
 

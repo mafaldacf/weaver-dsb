@@ -2,7 +2,7 @@
 # Services
 # --------
 
-["socialnetwork/services/ComposePost"]
+["socialnetwork/services/ComposePostService"]
 rabbitmq_address = "localhost"
 rabbitmq_port = 5673
 rabbitmq_username = "admin"
@@ -10,12 +10,12 @@ rabbitmq_password = "admin"
 region = "us-central1"
 regions = ["europe-west3", "us-central1"]
 
-["socialnetwork/services/PostStorage"]
+["socialnetwork/services/PostStorageService"]
 mongodb_address = "localhost"
 mongodb_port = 27018
 region = "us-central1"
 
-["socialnetwork/services/WriteHomeTimeline"]
+["socialnetwork/services/WriteHomeTimelineService"]
 rabbitmq_address = "localhost"
 rabbitmq_port = 5673
 rabbitmq_username = "admin"
@@ -25,7 +25,7 @@ mongodb_port = 27018
 num_workers = 4
 region = "us-central1"
 
-["socialnetwork/services/UserTimeline"]
+["socialnetwork/services/UserTimelineService"]
 redis_address = "localhost"
 redis_port = "6383"
 mongodb_address = "localhost"
