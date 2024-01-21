@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 
 	"github.com/ServiceWeaver/weaver"
 	"github.com/ServiceWeaver/weaver/metrics"
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.opentelemetry.io/otel/attribute"
@@ -27,6 +29,8 @@ type writeHomeTimelineServiceOptions struct {
 	RabbitMQPort     int    `toml:"rabbitmq_port"`
 	MongoDBAddr      string `toml:"mongodb_address"`
 	MongoDBPort      int    `toml:"mongodb_port"`
+	RedisAddr   	 string `toml:"redis_address"`
+	RedisPort   	 int    `toml:"redis_port"`
 	NumWorkers       int    `toml:"num_workers"`
 	Region           string `toml:"region"`
 }
@@ -34,7 +38,9 @@ type writeHomeTimelineServiceOptions struct {
 type writeHomeTimelineService struct {
 	weaver.Implements[WriteHomeTimelineService]
 	weaver.WithConfig[writeHomeTimelineServiceOptions]
-	mongoClient *mongo.Client
+	socialGraphService 	weaver.Ref[SocialGraphService]
+	mongoClient 		*mongo.Client
+	redisClient 		*redis.Client
 }
 
 var (
@@ -53,6 +59,7 @@ func (w *writeHomeTimelineService) Init(ctx context.Context) error {
 		logger.Error(err.Error())
 		return err
 	}
+	w.redisClient = storage.RedisClient(w.Config().RedisAddr, w.Config().RedisPort)
 
 	var wg sync.WaitGroup
 	wg.Add(w.Config().NumWorkers)
@@ -64,7 +71,11 @@ func (w *writeHomeTimelineService) Init(ctx context.Context) error {
 			}()
 		}
 
-	logger.Info("write home timeline service running!", "region", w.Config().Region, "n_workers", w.Config().NumWorkers, "rabbitmq_addr", w.Config().RabbitMQAddr, "rabbitmq_port", w.Config().RabbitMQPort)
+	logger.Info("write home timeline service running!", "region", w.Config().Region, "n_workers", w.Config().NumWorkers, 
+		"rabbitmq_addr", w.Config().RabbitMQAddr, "rabbitmq_port", w.Config().RabbitMQPort, 
+		"mongodb_addr", w.Config().MongoDBAddr, "mongodb_port", w.Config().MongoDBPort, 
+		"redis_addr", w.Config().RedisAddr, "redis_port", w.Config().RedisPort,
+	)
 	wg.Wait()
 	return nil
 }
@@ -96,13 +107,42 @@ func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []
 		if err == mongo.ErrNoDocuments {
 			logger.Debug("inconsistency!")
 			inconsistencies.Inc()
+			return nil
 		} else {
 			logger.Error("error reading post from mongodb", "msg", err.Error())
+			return err
 		}
-	} else {
-		logger.Debug("found post! :)", "postid", post.PostID, "text", post.Text)
 	}
 
+	logger.Debug("found post! :)", "postid", post.PostID, "text", post.Text)
+
+	followersID, err := w.socialGraphService.Get().GetFollowers(ctx, msg.ReqID, msg.UserID)
+	if err != nil {
+		logger.Error("error getting followers from social graph service")
+		return err
+	}
+	uniqueIDs := make(map[int64]bool, 0)
+	for _, followerID := range followersID {
+		uniqueIDs[followerID] = true
+	}
+	for _, userMentionID := range msg.UserMentionIDs {
+		uniqueIDs[userMentionID] = true
+	}
+	value := redis.Z {
+		Member: msg.PostID,
+		Score: float64(msg.Timestamp),
+	}
+	_, err = w.redisClient.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		for id := range uniqueIDs {
+			idStr := strconv.FormatInt(id, 10)
+			err = w.redisClient.ZAddNX(ctx, idStr, value).Err()
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	logger.Debug("leaving write home timeline")
 	return nil
 }
 

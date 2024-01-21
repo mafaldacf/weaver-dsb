@@ -19,16 +19,19 @@ import (
 type server struct {
 	weaver.Implements[weaver.Main]
 	composePostService 	weaver.Ref[services.ComposePostService]
+	homeTimelineService weaver.Ref[services.HomeTimelineService]
+	userTimelineService weaver.Ref[services.UserTimelineService]
 	textService 		weaver.Ref[services.TextService]
-	mediaService 		weaver.Ref[services.TextService]
+	mediaService 		weaver.Ref[services.MediaService]
 	uniqueIdService 	weaver.Ref[services.UniqueIdService]
-	//userService 		weaver.Ref[services.UserService]
+	userService 		weaver.Ref[services.UserService]
 	lis                	weaver.Listener `weaver:"wrk2"`
 }
 
 func Serve(ctx context.Context, s *server) error {
 	mux := http.NewServeMux()
 	mux.Handle("/composepost", instrument("composepost", s.composePostHandler, http.MethodGet))
+	mux.Handle("/composepost2", instrument("composepost2", s.composePostHandler2, http.MethodGet))
 	var handler http.Handler = mux
 	s.Logger(ctx).Info("wrk2-api available", "addr", s.lis)
 	return http.Serve(s.lis, handler)
@@ -95,8 +98,8 @@ func (s *server) composePostHandler(w http.ResponseWriter, r *http.Request) {
 			Username: "user_1",
 		},
 		{
-			UserID:   1,
-			Username: "user_1",
+			UserID:   2,
+			Username: "user_2",
 		},
 	}
 
@@ -135,13 +138,61 @@ func (s *server) composePostHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	/* 
-	err1 = w.textService.UploadText(ctx, reqID, text) CHECK
-	err2 = w.mediaService.UploadMedia(ctx, reqID, media_types, media_ids) CHECK
-	err3 = w.uniqueIDService.UploadUniqueId(ctx, reqID, postType) CHECK
-	err4 = w.userService.UploadCreatorWithUserId(ctx, reqID, user_id, username) TODO 
-	*/
+	response := "success! :)\n"
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte(response))
+}
 
+
+func (s *server) composePostHandler2(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	logger := s.Logger(ctx)
+	logger.Info("entering rootHandler")
+
+	trace.SpanFromContext(r.Context()).AddEvent("handling http requesdt",
+		trace.WithAttributes(
+			attribute.String("content", "hello there"),
+		))
+
+	text := "HelloWorld"
+	var userID int64 = 0
+	username := "user_0"
+	rand := rand.New(rand.NewSource(time.Now().UnixNano()))
+	reqID := rand.Int63()
+	mediaTypes := []string{"png", "png"}
+	mediaIDs := []int64{0, 1}
+	postType := model.POST_TYPE_POST
+
+	var wg sync.WaitGroup
+	wg.Add(4)
+	var errs [4]error
+	go func() {
+		defer wg.Done()
+		errs[0] = s.textService.Get().UploadText(ctx, reqID, text)
+		logger.Debug("upload text done!")
+	}()
+	go func() {
+		defer wg.Done()
+		errs[1] = s.mediaService.Get().UploadMedia(ctx, reqID, mediaTypes, mediaIDs)
+		logger.Debug("upload media done!")
+	}()
+	go func() {
+		defer wg.Done()
+		errs[2] = s.uniqueIdService.Get().UploadUniqueId(ctx, reqID, postType)
+		logger.Debug("upload unique id done!")
+	}()
+	go func() {
+		defer wg.Done()
+		errs[3] = s.userService.Get().UploadCreatorWithUserId(ctx, reqID, userID, username)
+		logger.Debug("upload creator with user id done!")
+	}()
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 	response := "success! :)\n"
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte(response))

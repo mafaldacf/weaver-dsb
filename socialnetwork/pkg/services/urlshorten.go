@@ -15,6 +15,7 @@ var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 type UrlShortenService interface {
 	UploadUrls(ctx context.Context, reqID int64, urls []string) error
+	GetExtendedUrls(ctx context.Context, reqID int64, shortenedUrls []string) ([]string, error)
 }
 
 type urlShortenService struct {
@@ -77,4 +78,9 @@ func (u *urlShortenService) UploadUrls(ctx context.Context, reqID int64, urls []
 	}
 
 	return u.composePostService.Get().UploadUrls(ctx, reqID, targetUrls)
+}
+
+func (u *urlShortenService) GetExtendedUrls(ctx context.Context, reqID int64, shortenedUrls []string) ([]string, error) {
+	// not implemented in original dsb
+	return nil, nil
 }

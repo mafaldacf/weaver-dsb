@@ -20,6 +20,8 @@ rabbitmq_address = "localhost"
 rabbitmq_port = 5672
 mongodb_address = "localhost"
 mongodb_port = 27017
+redis_address = "localhost"
+redis_port = 6383
 num_workers = 4
 region = "europe-west3"
 
@@ -34,6 +36,18 @@ mongodb_address = "localhost"
 mongodb_port = 27017
 
 ["socialnetwork/pkg/services/UserMentionService"]
+redis_address = "localhost"
+redis_port = 6383
+mongodb_address = "localhost"
+mongodb_port = 27017
+
+["socialnetwork/pkg/services/UserService"]
+redis_address = "localhost"
+redis_port = 6383
+mongodb_address = "localhost"
+mongodb_port = 27017
+
+["socialnetwork/pkg/services/SocialGraphService"]
 redis_address = "localhost"
 redis_port = 6383
 mongodb_address = "localhost"

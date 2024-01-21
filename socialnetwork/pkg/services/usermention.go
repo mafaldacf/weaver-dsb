@@ -44,12 +44,16 @@ func (u *userMentionService) Init(ctx context.Context) error {
 
 	u.redisClient = storage.RedisClient(u.Config().RedisAddr, u.Config().RedisPort)
 
-	logger.Info("user mention service running!", "mongodb_addr", u.Config().MongoDBAddr, "mongodb_port", u.Config().MongoDBPort, "redis_addr", u.Config().RedisAddr, "redis_port", u.Config().RedisPort)
+	logger.Info("user mention service running!",
+		"mongodb_addr", u.Config().MongoDBAddr, "mongodb_port", u.Config().MongoDBPort, 
+		"redis_addr", u.Config().RedisAddr, "redis_port", u.Config().RedisPort,
+	)
 	return nil
 }
 
 func (u *userMentionService) UploadUserMentions(ctx context.Context, reqID int64, usernames []string) error {
 	logger := u.Logger(ctx)
+	logger.Debug("entering UploadUserMentions", "req_id", reqID, "usernames", usernames)
 	
 	usersNotCached := make(map[string]bool)
 	revLookup := make(map[string]string)
@@ -65,17 +69,18 @@ func (u *userMentionService) UploadUserMentions(ctx context.Context, reqID int64
 		retvals = append(retvals, &values[i])
 	}
 
-	sliceCmd := u.redisClient.MGet(ctx, keys...)
-	result, err := sliceCmd.Result()
-	if err != nil {
-		logger.Error("error reading keys from redis", "msg", err.Error())
-		return err
-	}
-	for i, data := range result {
-		err := json.Unmarshal([]byte(data.(string)), retvals[i])
+	if len(keys) > 0 {
+		result, err := u.redisClient.MGet(ctx, keys...).Result()
 		if err != nil {
-			logger.Error("error parsing result from redis", "msg", err.Error())
+			logger.Error("error reading keys from redis", "msg", err.Error())
 			return err
+		}
+		for i, data := range result {
+			err := json.Unmarshal([]byte(data.(string)), retvals[i])
+			if err != nil {
+				logger.Error("error parsing result from redis", "msg", err.Error())
+				return err
+			}
 		}
 	}
 

@@ -29,6 +29,9 @@ func (t *textService) Init(ctx context.Context) error {
 }
 
 func (t *textService) UploadText(ctx context.Context, reqID int64, text string) error {
+	logger := t.Logger(ctx)
+	logger.Debug("entering UploadText", "req_id", reqID, "text", text)
+
 	r := regexp.MustCompile(`@[a-zA-Z0-9-_]+`)
 	matches := r.FindAllString(text, -1)
 	var usernames []string
@@ -38,22 +41,31 @@ func (t *textService) UploadText(ctx context.Context, reqID int64, text string) 
 	url_re := regexp.MustCompile(`(http://|https://)([a-zA-Z0-9_!~*'().&=+$%-]+)`)
 	url_strings := url_re.FindAllString(text, -1)
 
-	var errs [2]error
+	var shortenUrlErr, userMentionErr, uploadTextErr error
+	var shortenUrlWg, userMentionWg, uploadTextWg sync.WaitGroup
 	var urls []model.URL
-	var wg sync.WaitGroup
-	wg.Add(2)
+
+	// -- url shorten service rpc
+	shortenUrlWg.Add(1)
 	go func() {
-		defer wg.Done()
-		errs[0] = t.urlShortenService.Get().UploadUrls(ctx, reqID, url_strings)
+		defer shortenUrlWg.Done()
+		shortenUrlErr = t.urlShortenService.Get().UploadUrls(ctx, reqID, url_strings)
 	}()
+	// --
+	
+	// -- user mention service rpc
+	userMentionWg.Add(1)
 	go func() {
-		defer wg.Done()
-		errs[1] = t.userMentionService.Get().UploadUserMentions(ctx, reqID, usernames)
+		defer userMentionWg.Done()
+		userMentionErr = t.userMentionService.Get().UploadUserMentions(ctx, reqID, usernames)
 	}()
-	for _, err := range errs {
-		if err != nil {
-			return err
-		}
+	// --
+
+	
+	shortenUrlWg.Wait()
+	if shortenUrlErr != nil {
+		logger.Error("error uploading urls to url shorten service", "msg", shortenUrlErr.Error())
+		return shortenUrlErr
 	}
 
 	updatedText := text
@@ -63,5 +75,24 @@ func (t *textService) UploadText(ctx context.Context, reqID int64, text string) 
 		}
 	}
 
-	return t.composePostService.Get().UploadText(ctx, reqID, updatedText)
+	// -- compose post service rpc
+	uploadTextWg.Add(1)
+	go func() {
+		defer uploadTextWg.Done()
+		uploadTextErr = t.composePostService.Get().UploadText(ctx, reqID, updatedText)
+	}()
+	// --
+
+	userMentionWg.Wait()
+	if userMentionErr != nil {
+		logger.Error("error uploading user mentions to user mention service", "msg", userMentionErr.Error())
+		return userMentionErr
+	}
+	uploadTextWg.Wait()
+	if uploadTextErr != nil {
+		logger.Error("error uploading text to compose post service", "msg", uploadTextErr.Error())
+		return uploadTextErr
+	}
+
+	return uploadTextErr
 }

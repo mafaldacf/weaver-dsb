@@ -61,7 +61,10 @@ func (c *composePostService) Init(ctx context.Context) error {
 
 	c.redisClient = storage.RedisClient(c.Config().RedisAddr, c.Config().RedisPort)
 
-	logger.Info("compose post service running!", "region", c.Config().Region, "regions", c.Config().Regions, "rabbitmq_addr", c.Config().RabbitMQAddr, "rabbitmq_port", c.Config().RabbitMQPort, "redis_addr", c.Config().RedisAddr, "redis_port", c.Config().RedisPort)
+	logger.Info("compose post service running!", "region", c.Config().Region, "regions", c.Config().Regions, 
+		"rabbitmq_addr", c.Config().RabbitMQAddr, "rabbitmq_port", c.Config().RabbitMQPort, 
+		"redis_addr", c.Config().RedisAddr, "redis_port", c.Config().RedisPort,
+	)
 	return nil
 }
 
@@ -69,9 +72,18 @@ func (c *composePostService) uploadComponent(ctx context.Context, reqID int64, f
 	logger := c.Logger(ctx)
 	reqIDStr := strconv.FormatInt(reqID, 10)
 	cmds, err := c.redisClient.Pipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.HSet(ctx, reqIDStr, fieldsValues)
-		pipe.HIncrBy(ctx, reqIDStr, "num_components", 1)
-		pipe.Expire(ctx, reqIDStr, time.Second * time.Duration(REDIS_EXPIRE_TIME))
+		err := pipe.HSet(ctx, reqIDStr, fieldsValues).Err()
+		if err != nil {
+			return err
+		}
+		err = pipe.HIncrBy(ctx, reqIDStr, "num_components", 1).Err()
+		if err != nil {
+			return err
+		}
+		err = pipe.Expire(ctx, reqIDStr, time.Second * time.Duration(REDIS_EXPIRE_TIME)).Err()
+		if err != nil {
+			return err
+		}
 		return nil
 	})
 
@@ -95,7 +107,7 @@ func (c *composePostService) uploadComponent(ctx context.Context, reqID int64, f
 
 func (c *composePostService) UploadText(ctx context.Context, reqID int64, text string) error {
 	logger := c.Logger(ctx)
-	logger.Info("uploading text", "text", text)
+	logger.Debug("entering UploadText", "text", text)
 	textJSON, err := json.Marshal(text)
 	if err != nil {
 		logger.Error("error converting text to json", "text", text)
@@ -107,7 +119,7 @@ func (c *composePostService) UploadText(ctx context.Context, reqID int64, text s
 
 func (c *composePostService) UploadMedia(ctx context.Context, reqID int64, medias []model.Media) error {
 	logger := c.Logger(ctx)
-	logger.Info("uploading medias", "medias", medias)
+	logger.Debug("entering UploadMedia", "medias", medias)
 	mediasJSON, err := json.Marshal(medias)
 	if err != nil {
 		logger.Error("error converting medias to json", "medias", medias)
@@ -119,10 +131,10 @@ func (c *composePostService) UploadMedia(ctx context.Context, reqID int64, media
 
 func (c *composePostService) UploadUniqueId(ctx context.Context, reqID int64, postID int64, postType model.PostType) error {
 	logger := c.Logger(ctx)
-	logger.Info("uploading unique id", "post_id", postID, "post_type", postType)
+	logger.Debug("entering UploadUniqueId", "post_id", postID, "post_type", postType)
 	postIDJSON, err := json.Marshal(postID)
 	if err != nil {
-		logger.Error("error converting post_id to json", "post_id", postID)
+		logger.Error("error converting post id to json", "post_id", postID)
 		return err
 	}
 	postTypeJSON, err := json.Marshal(postType)
@@ -136,7 +148,7 @@ func (c *composePostService) UploadUniqueId(ctx context.Context, reqID int64, po
 
 func (c *composePostService) UploadUrls(ctx context.Context, reqID int64, urls []model.URL) error {
 	logger := c.Logger(ctx)
-	logger.Info("uploading urls", "urls", urls)
+	logger.Debug("entering UploadUrls", "urls", urls)
 	urlsJSON, err := json.Marshal(urls)
 	if err != nil {
 		logger.Error("error converting urls to json", "urls", urls)
@@ -147,7 +159,7 @@ func (c *composePostService) UploadUrls(ctx context.Context, reqID int64, urls [
 
 func (c *composePostService) UploadUserMentions(ctx context.Context, reqID int64, userMentions []model.UserMention) error {
 	logger := c.Logger(ctx)
-	logger.Info("uploading user mentions", "user_mentions", userMentions)
+	logger.Debug("entering UploadUserMentions", "user_mentions", userMentions)
 	userMentionsJSON, err := json.Marshal(userMentions)
 	if err != nil {
 		logger.Error("error converting user mentions to json", "user_mentions", userMentions)
@@ -158,7 +170,7 @@ func (c *composePostService) UploadUserMentions(ctx context.Context, reqID int64
 
 func (c *composePostService) UploadCreator(ctx context.Context, reqID int64, creator model.Creator) error {
 	logger := c.Logger(ctx)
-	logger.Info("uploading creator", "creator", creator)
+	logger.Debug("entering UploadCreator", "creator", creator)
 	creatorJSON, err := json.Marshal(creator)
 	if err != nil {
 		logger.Error("error converting creator to json", "user_mentions", creatorJSON)
@@ -169,7 +181,7 @@ func (c *composePostService) UploadCreator(ctx context.Context, reqID int64, cre
 
 func (c *composePostService) composeAndUpload(ctx context.Context, reqID int64) error {
 	logger := c.Logger(ctx)
-	logger.Info("entering ComposeAndUpload for ComposePostService service", "reqid", reqID)
+	logger.Debug("entering composeAndUpload", "reqid", reqID)
 
 	var text string
 	var creator model.Creator
@@ -185,7 +197,7 @@ func (c *composePostService) composeAndUpload(ctx context.Context, reqID int64) 
 
 	reqIDStr := strconv.FormatInt(reqID, 10)
 	loadComponent := func(key string, value interface{}) error {
-		logger.Info("loading component", "reqid", reqIDStr, "key", key)
+		logger.Debug("loading component", "reqid", reqIDStr, "key", key)
 		cmd := c.redisClient.HGet(ctx, reqIDStr, key)
 		if cmd == nil || cmd.Err() != nil {
 			return cmd.Err()
@@ -226,7 +238,7 @@ func (c *composePostService) composeAndUpload(ctx context.Context, reqID int64) 
 		errs[6] = loadComponent("post_type", &postType)
 	}()
 	wg.Wait()
-	logger.Info("got all components from redis")
+	logger.Debug("got all components from redis")
 
 	for _, err := range errs {
 		if err != nil {
@@ -235,7 +247,7 @@ func (c *composePostService) composeAndUpload(ctx context.Context, reqID int64) 
 		}
 	}
 
-	logger.Info("parsing post data")
+	logger.Debug("parsing post data")
 	timestamp := time.Now().UnixMilli()
 	post := model.Post {
 		PostID: 		postID,
@@ -253,7 +265,7 @@ func (c *composePostService) composeAndUpload(ctx context.Context, reqID int64) 
 	}
 
 	// --- Post Storage
-	logger.Info("remotely calling PostStorageService")
+	logger.Debug("remotely calling PostStorageService")
 
 	err := c.postStorageService.Get().StorePost(ctx, reqID, post)
 	if err != nil {
@@ -269,17 +281,18 @@ func (c *composePostService) composeAndUpload(ctx context.Context, reqID int64) 
 		))
 
 	// --- Write Home Timeline
-	logger.Info("queueing message to rabbitmq")
-	c.uploadHomeTimelineHelper(ctx, reqID, postID, timestamp, userMentionIDs)
+	logger.Debug("queueing message to rabbitmq")
+	c.uploadHomeTimelineHelper(ctx, reqID, postID, creator.UserID, timestamp, userMentionIDs)
 
 	// --- User Timeline
+	logger.Debug("calling write user timeline")
 	c.userTimelineService.Get().WriteUserTimeline(ctx, reqID, postID, post.Creator.UserID, timestamp)
 
-	logger.Info("done!")
+	logger.Debug("done!")
 	return nil
 }
 
-func (c *composePostService) uploadHomeTimelineHelper(ctx context.Context, reqID int64, postID int64, timestamp int64, userMentionIDs []int64) error {
+func (c *composePostService) uploadHomeTimelineHelper(ctx context.Context, reqID int64, postID int64, userID int64, timestamp int64, userMentionIDs []int64) error {
 	logger := c.Logger(ctx)
 	err := c.amqChannel.ExchangeDeclare("write-home-timeline", "topic", false, false, false, false, nil)
 	if err != nil {
@@ -290,6 +303,7 @@ func (c *composePostService) uploadHomeTimelineHelper(ctx context.Context, reqID
 	msgJSON, err := json.Marshal(model.Message{
 		ReqID: reqID,
 		PostID: postID,
+		UserID: userID,
 		Timestamp: timestamp,
 		UserMentionIDs: userMentionIDs,
 	})

@@ -24,8 +24,12 @@ func (m *mediaService) Init(ctx context.Context) error {
 }
 
 func (m *mediaService) UploadMedia(ctx context.Context, reqID int64, mediaTypes []string, mediaIDs []int64) error {
+	logger := m.Logger(ctx)
+	logger.Debug("entering UploadMedia", "req_id", reqID, "media_types", mediaTypes, "mediaIDs", mediaIDs)
 	if len(mediaTypes) != len(mediaIDs) {
-		return fmt.Errorf("the lengths of media_id list and media_type list are not equal")
+		errMsg := "the lengths of media_id list and media_type list are not equal"
+		logger.Error(errMsg, "num_media_types", len(mediaTypes), "num_media_ids", len(mediaIDs))
+		return fmt.Errorf(errMsg)
 	}
 	var medias []model.Media
 	for i := range mediaIDs {

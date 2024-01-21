@@ -21,6 +21,7 @@ import (
 
 type PostStorageService interface {
 	StorePost(ctx context.Context, reqID int64, post model.Post) error
+	ReadPost(ctx context.Context, reqID int64, postID int64) (model.Post, error)
 	ReadPosts(ctx context.Context, reqID int64, postIDs []int64) ([]model.Post, error)
 }
 
@@ -59,7 +60,7 @@ func (p *postStorageService) Init(ctx context.Context) error {
 
 func (p *postStorageService) StorePost(ctx context.Context, reqID int64, post model.Post) error {
 	logger := p.Logger(ctx)
-	logger.Info("entering StorePost for PostStorage service", "reqid", reqID, "post", post)
+	logger.Info("entering StorePost", "reqid", reqID, "post", post)
 
 	poststorage_start_ms := time.Now().UnixMilli()
 
@@ -80,8 +81,44 @@ func (p *postStorageService) StorePost(ctx context.Context, reqID int64, post mo
 	return nil
 }
 
+func (p *postStorageService) ReadPost(ctx context.Context, reqID int64, postID int64) (model.Post, error) {
+	logger := p.Logger(ctx)
+	logger.Info("entering ReadPost", "req_id", reqID, "post_id", postID)
+
+	var post model.Post
+	postIDStr := strconv.FormatInt(postID, 10)
+	result, err := p.redisClient.Get(ctx, postIDStr).Bytes()
+
+	if err == nil {
+		err := json.Unmarshal(result, post)
+		if err != nil {
+			logger.Error("error parsing post from redis", "msg", err.Error())
+			return post, err
+		}
+	} else if err == redis.Nil { 
+		// GET returns redis.Nil if key does not exist
+		collection := p.mongoClient.Database("post").Collection("post")
+		filter := fmt.Sprintf(`{"PostID": %[1]d`, postID)
+		result := collection.FindOne(ctx, filter)
+		if result.Err() != nil {
+			return post, err
+		}
+		err = result.Decode(&post)
+		if err != nil {
+			errMsg := fmt.Sprintf("Post_id: %s doesn't exist in MongoDB", postIDStr)
+			logger.Warn(errMsg)
+			return post, fmt.Errorf(errMsg)
+		}
+	} else {
+		logger.Error("error reading post from mongodb", "msg", err.Error())
+		return post, err
+	}
+	return post, nil
+}
+
 func (p *postStorageService) ReadPosts(ctx context.Context, reqID int64, postIDs []int64) ([]model.Post, error) {
 	logger := p.Logger(ctx)
+	logger.Info("entering ReadPosts", "req_id", reqID, "post_ids", postIDs)
 	
 	unique_post_ids := make(map[int64]bool)
 	for _, pid := range postIDs {
