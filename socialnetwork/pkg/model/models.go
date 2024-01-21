@@ -15,18 +15,16 @@ type Creator struct {
 	Username 	string  `bson:"username"`
 }
 
-type MediaType string
-
 type Media struct {
 	weaver.AutoMarshal
-	MediaID int64  	 	`bson:"media_id"`
-	MediaType MediaType `bson:"media_type"`
+	MediaID 	int64  	 	`bson:"media_id"`
+	MediaType 	string `bson:"media_type"`
 }
 
 type URL struct {
 	weaver.AutoMarshal
-	ShortenURL 	string 	`bson:"shorten_url"`
-	ExpandedURL string 	`bson:"expanded_url"`
+	ExpandedUrl 	string 	`bson:"expanded_url"`
+	ShortenedUrl 	string 	`bson:"shortened_url"`
 }
 
 type UserMention struct {

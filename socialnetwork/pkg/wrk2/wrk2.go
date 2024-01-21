@@ -19,7 +19,11 @@ import (
 type server struct {
 	weaver.Implements[weaver.Main]
 	composePostService 	weaver.Ref[services.ComposePostService]
-	lis         		weaver.Listener `weaver:"wrk2"`
+	textService 		weaver.Ref[services.TextService]
+	mediaService 		weaver.Ref[services.TextService]
+	uniqueIdService 	weaver.Ref[services.UniqueIdService]
+	//userService 		weaver.Ref[services.UserService]
+	lis                	weaver.Listener `weaver:"wrk2"`
 }
 
 func Serve(ctx context.Context, s *server) error {
@@ -59,39 +63,39 @@ func (s *server) composePostHandler(w http.ResponseWriter, r *http.Request) {
 	text := "HelloWorld"
 	rand := rand.New(rand.NewSource(time.Now().UnixNano()))
 	reqID := rand.Int63()
-	medias := []model.Media {
+	medias := []model.Media{
 		{
-			MediaID: 0,
+			MediaID:   0,
 			MediaType: "png",
 		},
 		{
-			MediaID: 1,
+			MediaID:   1,
 			MediaType: "png",
 		},
 	}
 	postID := rand.Int63()
 	postType := model.POST_TYPE_POST
-	creator := model.Creator {
-		UserID: 0,
+	creator := model.Creator{
+		UserID:   0,
 		Username: "user_0",
 	}
-	urls := []model.URL {
+	urls := []model.URL{
 		{
-			ShortenURL: "shortened_url_0",
-			ExpandedURL: "expanded_url_0",
+			ShortenedUrl: "shortened_url_0",
+			ExpandedUrl:  "expanded_url_0",
 		},
 		{
-			ShortenURL: "shortened_url_1",
-			ExpandedURL: "expanded_url_1",
+			ShortenedUrl: "shortened_url_1",
+			ExpandedUrl:  "expanded_url_1",
 		},
 	}
-	userMentions := []model.UserMention {
+	userMentions := []model.UserMention{
 		{
-			UserID: 1,
+			UserID:   1,
 			Username: "user_1",
 		},
 		{
-			UserID: 1,
+			UserID:   1,
 			Username: "user_1",
 		},
 	}
@@ -130,6 +134,13 @@ func (s *server) composePostHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	/* 
+	err1 = w.textService.UploadText(ctx, reqID, text) CHECK
+	err2 = w.mediaService.UploadMedia(ctx, reqID, media_types, media_ids) CHECK
+	err3 = w.uniqueIDService.UploadUniqueId(ctx, reqID, postType) CHECK
+	err4 = w.userService.UploadCreatorWithUserId(ctx, reqID, user_id, username) TODO 
+	*/
 
 	response := "success! :)\n"
 	w.Header().Set("Content-Type", "text/plain")

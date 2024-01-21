@@ -3,10 +3,10 @@
 # --------
 
 ["socialnetwork/services/ComposePostService"]
+redis_address = "localhost"
+redis_port = 6383
 rabbitmq_address = "localhost"
 rabbitmq_port = 5673
-rabbitmq_username = "admin"
-rabbitmq_password = "admin"
 region = "us-central1"
 regions = ["europe-west3", "us-central1"]
 
@@ -18,8 +18,6 @@ region = "us-central1"
 ["socialnetwork/services/WriteHomeTimelineService"]
 rabbitmq_address = "localhost"
 rabbitmq_port = 5673
-rabbitmq_username = "admin"
-rabbitmq_password = "admin"
 mongodb_address = "localhost"
 mongodb_port = 27018
 num_workers = 4
@@ -27,10 +25,19 @@ region = "us-central1"
 
 ["socialnetwork/services/UserTimelineService"]
 redis_address = "localhost"
-redis_port = "6383"
+redis_port = 6383
 mongodb_address = "localhost"
-mongodb_port = 27017
-region = "us-central1"
+mongodb_port = 27018
+
+["socialnetwork/pkg/services/UrlShortenService"]
+mongodb_address = "localhost"
+mongodb_port = 27018
+
+["socialnetwork/pkg/services/UserMentionService"]
+redis_address = "localhost"
+redis_port = 6383
+mongodb_address = "localhost"
+mongodb_port = 27018
 
 # ----------
 # Deployment

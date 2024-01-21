@@ -25,8 +25,6 @@ type WriteHomeTimelineService interface {
 type writeHomeTimelineServiceOptions struct {
 	RabbitMQAddr     string `toml:"rabbitmq_address"`
 	RabbitMQPort     int    `toml:"rabbitmq_port"`
-	RabbitMQUsername string `toml:"rabbitmq_username"`
-	RabbitMQPassword string `toml:"rabbitmq_password"`
 	MongoDBAddr      string `toml:"mongodb_address"`
 	MongoDBPort      int    `toml:"mongodb_port"`
 	NumWorkers       int    `toml:"num_workers"`
@@ -48,7 +46,6 @@ var (
 
 func (w *writeHomeTimelineService) Init(ctx context.Context) error {
 	logger := w.Logger(ctx)
-	logger.Debug("initializing write home timeline service...")
 
 	var err error
 	w.mongoClient, err = storage.MongoDBClient(ctx, w.Config().MongoDBAddr, w.Config().MongoDBPort)
@@ -57,7 +54,6 @@ func (w *writeHomeTimelineService) Init(ctx context.Context) error {
 		return err
 	}
 
-	logger.Info("initializing workers for WriteHomeTimelineService service", "region", w.Config().Region, "nworkers", w.Config().NumWorkers, "rabbitmq_addr", w.Config().RabbitMQAddr, "rabbitmq_port", w.Config().RabbitMQPort)
 	var wg sync.WaitGroup
 	wg.Add(w.Config().NumWorkers)
 	for i := 1; i <= w.Config().NumWorkers; i++ {
@@ -65,8 +61,10 @@ func (w *writeHomeTimelineService) Init(ctx context.Context) error {
 			defer wg.Done()
 			err := w.workerThread(ctx)
 			logger.Error("error in worker thread", "msg", err.Error())
-		}()
-	}
+			}()
+		}
+
+	logger.Info("write home timeline service running!", "region", w.Config().Region, "n_workers", w.Config().NumWorkers, "rabbitmq_addr", w.Config().RabbitMQAddr, "rabbitmq_port", w.Config().RabbitMQPort)
 	wg.Wait()
 	return nil
 }
@@ -111,7 +109,7 @@ func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []
 func (w *writeHomeTimelineService) workerThread(ctx context.Context) error {
 	logger := w.Logger(ctx)
 
-	ch, conn, err := storage.RabbitMQClient(ctx, w.Config().RabbitMQUsername, w.Config().RabbitMQPassword, w.Config().RabbitMQAddr, w.Config().RabbitMQPort)
+	ch, conn, err := storage.RabbitMQClient(ctx, w.Config().RabbitMQAddr, w.Config().RabbitMQPort)
 	if err != nil {
 		logger.Error(err.Error())
 		return err
