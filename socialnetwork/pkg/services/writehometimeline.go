@@ -121,6 +121,8 @@ func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []
 		logger.Error("error getting followers from social graph service")
 		return err
 	}
+
+	logger.Debug("got followers to write to their hometimeline", "num", len(followersID))
 	uniqueIDs := make(map[int64]bool, 0)
 	for _, followerID := range followersID {
 		uniqueIDs[followerID] = true

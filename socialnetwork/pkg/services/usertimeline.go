@@ -82,12 +82,13 @@ func (u *userTimelineService) WriteUserTimeline(ctx context.Context, reqID int64
 	
 	userIDStr := strconv.FormatInt(userID, 10)
 	filter := bson.M{"user_id": userIDStr}
-	results, err := collection.Find(ctx, filter)
+	cur, err := collection.Find(ctx, filter)
 	if err != nil {
+		logger.Error("error reading posts from mongodb", "msg", err.Error())
 		return err
 	}
 	var timelines []model.Timeline
-	results.Decode(&timelines)
+	cur.Decode(&timelines) // ignore errors
 
 	if len(timelines) == 0 {
 		timeline := model.Timeline{UserID: userID, Posts: []model.TimelinePostInfo{{
@@ -164,11 +165,7 @@ func (u *userTimelineService) ReadUserTimeline(ctx context.Context, reqID int64,
 			logger.Error("error reading posts from mongodb", "msg", err.Error())
 			return nil, err
 		}
-		err = cur.Decode(&timelinePosts)
-		if err != nil {
-			logger.Error("error parsing timeline posts from mongodb", "msg", err.Error())
-			return nil, err
-		}
+		cur.Decode(&timelinePosts) // ignore errors
 		for _, timelinePost := range timelinePosts {
 			postIDs = append(postIDs, timelinePost.PostID)
 			postsToCache = append(postsToCache, redis.Z {

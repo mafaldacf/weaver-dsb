@@ -99,13 +99,13 @@ func (u *userMentionService) UploadUserMentions(ctx context.Context, reqID int64
 			names = append(names, name)
 		}
 		collection := u.mongoClient.Database("user").Collection("user")
-		filter := `{"Username": {"$in": ` + strings.Join(strings.Fields(fmt.Sprint(names)), ",")+ `}}` 
+		filter := `{"username": {"$in": ` + strings.Join(strings.Fields(fmt.Sprint(names)), ",")+ `}}` 
 		cur, err := collection.Find(ctx, filter)
 		if err != nil {
 			return err
 		}
 		var newUserMentions []model.UserMention
-		cur.Decode(&newUserMentions)
+		cur.Decode(&newUserMentions) // ignore errors
 		userMentions = append(userMentions, newUserMentions...)
 	}
 	return u.composePost.Get().UploadUserMentions(ctx, reqID, userMentions)

@@ -89,14 +89,21 @@ func (p *postStorageService) ReadPost(ctx context.Context, reqID int64, postID i
 	postIDStr := strconv.FormatInt(postID, 10)
 	result, err := p.redisClient.Get(ctx, postIDStr).Bytes()
 
+	if err != nil && err != redis.Nil {
+		// error reading cache
+		logger.Error("error reading post from mongodb", "msg", err.Error())
+		return post, err
+	}
 	if err == nil {
-		err := json.Unmarshal(result, post)
+		// post found in cache
+		err := json.Unmarshal(result, &post)
 		if err != nil {
-			logger.Error("error parsing post from redis", "msg", err.Error())
+			logger.Error("error parsing post from cache result", "msg", err.Error())
 			return post, err
 		}
-	} else if err == redis.Nil { 
-		// GET returns redis.Nil if key does not exist
+	} else { 
+		// post does not exist in cache
+		// so we get it from db
 		collection := p.mongoClient.Database("post").Collection("post")
 		filter := fmt.Sprintf(`{"PostID": %[1]d`, postID)
 		result := collection.FindOne(ctx, filter)
@@ -105,13 +112,10 @@ func (p *postStorageService) ReadPost(ctx context.Context, reqID int64, postID i
 		}
 		err = result.Decode(&post)
 		if err != nil {
-			errMsg := fmt.Sprintf("Post_id: %s doesn't exist in MongoDB", postIDStr)
+			errMsg := fmt.Sprintf("post_id: %s doesn't exist in MongoDB", postIDStr)
 			logger.Warn(errMsg)
 			return post, fmt.Errorf(errMsg)
 		}
-	} else {
-		logger.Error("error reading post from mongodb", "msg", err.Error())
-		return post, err
 	}
 	return post, nil
 }
@@ -159,17 +163,13 @@ func (p *postStorageService) ReadPosts(ctx context.Context, reqID int64, postIDs
 		}
 		collection := p.mongoClient.Database("post").Collection("post")
 		delim := ","
-		filter := `{"PostID": {"$in": ` + strings.Join(strings.Fields(fmt.Sprint(unique_pids)), delim) + `}}`
+		filter := `{"post_id": {"$in": ` + strings.Join(strings.Fields(fmt.Sprint(unique_pids)), delim) + `}}`
 		cur, err := collection.Find(ctx, filter)
 		if err != nil {
 			logger.Error("error reading posts from mongodb", "msg", err.Error())
 			return []model.Post{}, err
 		}
-		err = cur.Decode(&new_posts)
-		if err != nil {
-			logger.Error("error parsing posts from mongodb result", "msg", err.Error())
-			return []model.Post{}, err
-		}
+		cur.Decode(&new_posts) // ignore errors
 		values = append(values, new_posts...)
 
 		var wg sync.WaitGroup

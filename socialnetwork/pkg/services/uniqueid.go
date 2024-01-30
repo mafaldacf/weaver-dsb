@@ -6,17 +6,17 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"socialnetwork/pkg/model"
+	"socialnetwork/pkg/utils"
 
 	"github.com/ServiceWeaver/weaver"
 )
 
 // Custom Epoch (January 1, 2018 Midnight GMT = 2018-01-01T00:00:00Z)
-const CUSTOM_EPOCH int64 = 1514764800000
+const UNIQUE_ID_CUSTOM_EPOCH int64 = 1514764800000
 
 type UniqueIdService interface {
 	UploadUniqueId(ctx context.Context, reqID int64, postType model.PostType) error
@@ -27,17 +27,17 @@ type uniqueIdService struct {
 	composePostService 	weaver.Ref[ComposePostService]
 	currentTimestamp 	int64
 	counter 			int64
-	machineId 			string
+	machineID 			string
 	mu 					sync.Mutex
 }
 
 func (u *uniqueIdService) Init(ctx context.Context) error {
 	logger := u.Logger(ctx)
-	u.machineId = u.getMachineID(ctx) //FIXME
-	u.machineId = "0"
+	u.machineID = u.getMachineID(ctx) //FIXME
+	u.machineID = "0"
 	u.currentTimestamp = -1
 	u.counter = 0
-	logger.Info("unique id service running!", "machine_id", u.machineId)
+	logger.Info("unique id service running!", "machine_id", u.machineID)
 	return nil
 }
 
@@ -99,37 +99,15 @@ func (u *uniqueIdService) UploadUniqueId(ctx context.Context, reqID int64, postT
 	logger := u.Logger(ctx)
 	logger.Debug("entering UploadUniqueId", "req_id", reqID,  "post_type", postType)
 
-	timestamp := time.Now().UnixMilli() - CUSTOM_EPOCH
-	i, err := u.getCounter(timestamp)
+	timestamp := time.Now().UnixMilli() - UNIQUE_ID_CUSTOM_EPOCH
+	counter, err := u.getCounter(timestamp)
 	if err != nil {
 		logger.Error("error getting counter", "msg", err.Error())
 		return err
 	}
-
-	timestampHex := strconv.FormatInt(timestamp, 16)
-	
-	if len(timestampHex) > 10 {
-		timestampHex = timestampHex[:10]
-	} else if len(timestampHex) < 10 {
-		timestampHex = strings.Repeat("0", 10-len(timestampHex)) + timestampHex
-	}
-
-	counterHex := strconv.FormatInt(i, 16)
-	if len(counterHex) > 3 {
-		counterHex = counterHex[:3]
-	} else if len(counterHex) < 3 {
-		counterHex = strings.Repeat("0", 3-len(counterHex)) + counterHex
-	}
-
-	postIdStr := u.machineId + timestampHex + counterHex
-	logger.Debug("generated post id (string)", "post id", postIdStr, "machine id", u.machineId, "timestamp", timestampHex, "counter", counterHex)
-	postId, err := strconv.ParseInt(postIdStr, 16, 64)
+	id, err := utils.GenUniqueID(u.machineID, timestamp, counter)
 	if err != nil {
-		logger.Error("error parsing post id", "msg", err.Error())
 		return err
 	}
-	postId = postId & 0x7FFFFFFFFFFFFFFF
-
-
-	return u.composePostService.Get().UploadUniqueId(ctx, reqID, postId, postType)
+	return u.composePostService.Get().UploadUniqueId(ctx, reqID, id, postType)
 }

@@ -21,6 +21,6 @@ Initialize the working directory:
 ``` zsh
     gsutil config -a
     terraform init
-    terraform apply -var="gcp_create_dev_instance=true"
+    terraform apply
     terraform destroy
 ```

@@ -37,7 +37,7 @@ listeners.wrk2 = {address = "127.0.0.1:9001"}
 
 [serviceweaver]
 binary = "./socialnetwork"
-name = "weaver-dsb-socialnetwork-us"
+name = "weaver-dsb-db-us"
 
 [gke]
 regions = ["us-central1"]

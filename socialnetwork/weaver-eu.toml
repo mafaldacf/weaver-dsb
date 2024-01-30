@@ -6,7 +6,7 @@
 redis_address = "localhost"
 redis_port = 6383
 rabbitmq_address = "localhost"
-rabbitmq_port = 5672
+rabbitmq_port = 5673
 region = "europe-west3"
 regions = ["europe-west3", "us-central1"]
 
@@ -24,6 +24,10 @@ redis_address = "localhost"
 redis_port = 6383
 num_workers = 4
 region = "europe-west3"
+
+["socialnetwork/pkg/services/HomeTimelineService"]
+redis_address = "localhost"
+redis_port = 6381
 
 ["socialnetwork/pkg/services/UserTimelineService"]
 redis_address = "localhost"
@@ -49,7 +53,7 @@ mongodb_port = 27017
 
 ["socialnetwork/pkg/services/SocialGraphService"]
 redis_address = "localhost"
-redis_port = 6383
+redis_port = 6380
 mongodb_address = "localhost"
 mongodb_port = 27017
 
@@ -65,7 +69,7 @@ listeners.wrk2 = {address = "127.0.0.1:9000"}
 
 [serviceweaver]
 binary = "./socialnetwork"
-name = "weaver-dsb-socialnetwork-eu"
+name = "weaver-dsb-db-eu"
 
 [gke]
 regions = ["europe-west3"]

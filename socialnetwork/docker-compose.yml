@@ -3,17 +3,95 @@ services:
   # ------------
   # CACHE: REDIS
   # ------------
-  user-timeline-redis:
+  home-timeline-redis-eu:
     image: redis
-    hostname: user-timeline-redis
+    hostname: home-timeline-redis-eu
+    ports:
+      - 6381:6379
+    command: 'redis-server --slaveof home-timeline-redis-eu 6379 --replica-read-only no'
+    restart: 'no'
+    deploy:
+      placement:
+        constraints: [node.hostname == weaver-dsb-db-eu]
+  #home-timeline-redis-us:
+  #  image: redis
+  #  hostname: home-timeline-redis-eu
+  #  command: 'redis-server --slaveof home-timeline-redis-eu 6379 --replica-read-only no'
+  #  ports:
+  #    6381:6379
+  #  restart: 'no'
+  #  deploy:
+  #    placement:
+  #      constraints: [node.hostname == weaver-dsb-db-us]
+  user-timeline-redis-eu:
+    image: redis
+    hostname: user-timeline-redis-eu
     ports:
       - 6383:6379
     restart: 'no'
     deploy:
       placement:
-        constraints: [node.hostname == node11]
+        constraints: [node.hostname == weaver-dsb-db-eu]
     networks:
       - deathstarbench_network
+  #user-timeline-redis-us:
+  #  image: redis
+  #  hostname: user-timeline-redis-us
+  #  ports:
+  #    - 6383:6379
+  #  command: 'redis-server --slaveof user-timeline-redis-eu 6379 --replica-read-only no'
+  #  restart: 'no'
+  #  deploy:
+  #    placement:
+  #      constraints: [node.hostname == weaver-dsb-db-us]
+  #  networks:
+  #    - deathstarbench_network
+  social-graph-redis-eu:
+    image: redis
+    hostname: user-timeline-redis-eu
+    ports:
+      - 6380:6379
+    restart: 'no'
+    deploy:
+      placement:
+        constraints: [node.hostname == weaver-dsb-db-eu]
+    networks:
+      - deathstarbench_network
+  #social-graph-redis-us:
+  #  image: redis
+  #  hostname: user-timeline-redis-us
+  #  ports:
+  #    - 6380:6379
+  #  command: 'redis-server --slaveof social-graph-redis-eu 6379 --replica-read-only no'
+  #  restart: 'no'
+  #  deploy:
+  #    placement:
+  #      constraints: [node.hostname == weaver-dsb-db-us]
+  #  networks:
+  #    - deathstarbench_network
+  compose-post-redis-eu:
+    image: redis
+    hostname: user-timeline-redis-eu
+    ports:
+      - 6382:6379
+    restart: 'no'
+    deploy:
+      placement:
+        constraints: [node.hostname == weaver-dsb-db-eu]
+    networks:
+      - deathstarbench_network
+  #compose-post-redis-us:
+  #  image: redis
+  #  hostname: user-timeline-redis-eu
+  #  ports:
+  #    - 6382:6379
+  #  command: 'redis-server --slaveof compose-post-redis-eu 6379 --replica-read-only no'
+  #  restart: 'no'
+  #  deploy:
+  #    placement:
+  #      constraints: [node.hostname == weaver-dsb-db-eu]
+  #  networks:
+  #    - deathstarbench_network
 
   # ------------------
   # DATABASE: MONGODB
@@ -23,7 +101,7 @@ services:
     restart: 'always'
     deploy:
       placement:
-        constraints: [node.hostname == weaver-dsb-socialnetwork-manager]
+        constraints: [node.hostname == weaver-dsb-db-manager]
       restart_policy:
         condition: on-failure
         delay: 1s
@@ -45,7 +123,7 @@ services:
           size: 3000000000
     deploy:
       placement:
-        constraints: [node.hostname == weaver-dsb-socialnetwork-eu]
+        constraints: [node.hostname == weaver-dsb-db-eu]
     networks:
       - deathstarbench_network
   post-storage-mongodb-us:
@@ -63,7 +141,7 @@ services:
           size: 3000000000
     deploy:
       placement:
-        constraints: [node.hostname == weaver-dsb-socialnetwork-us]
+        constraints: [node.hostname == weaver-dsb-db-us]
     networks:
       - deathstarbench_network
 
@@ -79,7 +157,7 @@ services:
       #- ./config/rabbitmq/erlang.cookie:/etc/rabbitmq/.erlang.cookie
     deploy:
       placement:
-        constraints: [node.hostname == weaver-dsb-socialnetwork-manager]
+        constraints: [node.hostname == weaver-dsb-db-manager]
       restart_policy:
         condition: on-failure
         delay: 1s
@@ -104,7 +182,7 @@ services:
       #- ./config/rabbitmq/erlang.cookie:/etc/rabbitmq/.erlang.cookie
     deploy:
       placement:
-        constraints: [node.hostname == weaver-dsb-socialnetwork-eu]
+        constraints: [node.hostname == weaver-dsb-db-eu]
     networks:
       - deathstarbench_network
   write-home-timeline-rabbitmq-us:
@@ -125,7 +203,7 @@ services:
       #- ./config/rabbitmq/erlang.cookie:/etc/rabbitmq/.erlang.cookie
     deploy:
       placement:
-        constraints: [node.hostname == weaver-dsb-socialnetwork-us]
+        constraints: [node.hostname == weaver-dsb-db-us]
     networks:
       - deathstarbench_network
       
