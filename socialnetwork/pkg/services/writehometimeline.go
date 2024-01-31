@@ -80,6 +80,7 @@ func (w *writeHomeTimelineService) Init(ctx context.Context) error {
 	return nil
 }
 
+// onReceivedWorker adds the post to all the post's subscribed users (followers, mentioned users, etc)
 func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []byte) error {
 	logger := w.Logger(ctx)
 
@@ -97,7 +98,7 @@ func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []
 			attribute.Int64("queue_end_ms", time.Now().UnixMilli()),
 		))
 
-	db := w.mongoClient.Database("poststorage")
+	db := w.mongoClient.Database("post-storage")
 	collection := db.Collection("posts")
 
 	var post model.Post

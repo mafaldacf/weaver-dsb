@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 
 	"github.com/ServiceWeaver/weaver"
 	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -28,18 +28,18 @@ type PostStorageService interface {
 var _ weaver.NotRetriable = PostStorageService.StorePost
 
 type postStorageServiceOptions struct {
-	MongoDBAddr string 		`toml:"mongodb_address"`
-	MongoDBPort int    		`toml:"mongodb_port"`
-	RedisAddr   string   	`toml:"redis_address"`
-	RedisPort  	int     	`toml:"redis_port"`
-	Region      string 		`toml:"region"`
+	MongoDBAddr string `toml:"mongodb_address"`
+	MongoDBPort int    `toml:"mongodb_port"`
+	RedisAddr   string `toml:"redis_address"`
+	RedisPort   int    `toml:"redis_port"`
+	Region      string `toml:"region"`
 }
 
 type postStorageService struct {
 	weaver.Implements[PostStorageService]
 	weaver.WithConfig[postStorageServiceOptions]
 	mongoClient *mongo.Client
-	redisClient *redis.Client
+	redisClient *redis.Client //FIXME: should be memcached
 }
 
 func (p *postStorageService) Init(ctx context.Context) error {
@@ -54,7 +54,10 @@ func (p *postStorageService) Init(ctx context.Context) error {
 
 	p.redisClient = storage.RedisClient(p.Config().RedisAddr, p.Config().RedisPort)
 
-	logger.Info("post storage service running!", "region", p.Config().Region, "mongodb_addr", p.Config().MongoDBAddr, "mongodb_port", p.Config().MongoDBPort)
+	logger.Info("post storage service running!", "region", p.Config().Region,
+		"mongodb_addr", p.Config().MongoDBAddr, "mongodb_port", p.Config().MongoDBPort,
+		"redis_addr", p.Config().RedisAddr, "redis_port", p.Config().RedisPort,
+	)
 	return nil
 }
 
@@ -64,8 +67,7 @@ func (p *postStorageService) StorePost(ctx context.Context, reqID int64, post mo
 
 	poststorage_start_ms := time.Now().UnixMilli()
 
-	db := p.mongoClient.Database("poststorage")
-	collection := db.Collection("posts")
+	collection := p.mongoClient.Database("post-storage").Collection("posts")
 	r, err := collection.InsertOne(ctx, post)
 	if err != nil {
 		logger.Error("error writing post", "msg", err.Error())
@@ -101,18 +103,20 @@ func (p *postStorageService) ReadPost(ctx context.Context, reqID int64, postID i
 			logger.Error("error parsing post from cache result", "msg", err.Error())
 			return post, err
 		}
-	} else { 
+	} else {
 		// post does not exist in cache
 		// so we get it from db
-		collection := p.mongoClient.Database("post").Collection("post")
-		filter := fmt.Sprintf(`{"PostID": %[1]d`, postID)
+		collection := p.mongoClient.Database("post-storage").Collection("posts")
+		filter := bson.D{
+			{Key: "PostID", Value: postID},
+		}
 		result := collection.FindOne(ctx, filter)
 		if result.Err() != nil {
 			return post, err
 		}
 		err = result.Decode(&post)
 		if err != nil {
-			errMsg := fmt.Sprintf("post_id: %s doesn't exist in MongoDB", postIDStr)
+			errMsg := fmt.Sprintf("post_id: %s not found in mongodb", postIDStr)
 			logger.Warn(errMsg)
 			return post, fmt.Errorf(errMsg)
 		}
@@ -123,72 +127,88 @@ func (p *postStorageService) ReadPost(ctx context.Context, reqID int64, postID i
 func (p *postStorageService) ReadPosts(ctx context.Context, reqID int64, postIDs []int64) ([]model.Post, error) {
 	logger := p.Logger(ctx)
 	logger.Info("entering ReadPosts", "req_id", reqID, "post_ids", postIDs)
-	
-	unique_post_ids := make(map[int64]bool)
+
+	if len(postIDs) == 0 { // FIXME: remove this when using memcached instead of redis
+		return []model.Post{}, nil
+	}
+
+	uniquePostIDs := make(map[int64]bool)
 	for _, pid := range postIDs {
-		unique_post_ids[pid] = true
+		uniquePostIDs[pid] = true
 	}
 
 	var keys []string
 	for _, pid := range postIDs {
-		keys = append(keys, strconv.FormatInt(pid, 10))
+		keys = append(keys, strconv.FormatInt(pid , 10))
 	}
 	values := make([]model.Post, len(keys))
 	var retvals []interface{}
 	for idx := range values {
 		retvals = append(retvals, &values[idx])
 	}
-
-	sliceCmd := p.redisClient.MGet(ctx, keys...)
-	result, err := sliceCmd.Result()
+	result, err := p.redisClient.MGet(ctx, keys...).Result()
 	if err != nil {
 		logger.Error("error reading keys from redis", "msg", err.Error())
 		return nil, err
 	}
+
 	for i, data := range result {
-		err := json.Unmarshal([]byte(data.(string)), retvals[i])
-		if err != nil {
-			logger.Error("error parsing ids from redis result", "msg", err.Error())
-			return nil, err
+		if data != nil {
+			err := json.Unmarshal([]byte(data.(string)), retvals[i])
+			if err != nil {
+				logger.Error("error parsing ids from redis result", "msg", err.Error())
+				return nil, err
+			}
 		}
 	}
 	for _, post := range values {
-		delete(unique_post_ids, post.PostID)
+		delete(uniquePostIDs, post.PostID)
 	}
-	if len(unique_post_ids) != 0 {
-		var new_posts []model.Post
-		var unique_pids []int64
-		for k := range unique_post_ids {
-			unique_pids = append(unique_pids, k)
+	if len(uniquePostIDs) != 0 {
+		var newPosts []model.Post
+		collection := p.mongoClient.Database("post-storage").Collection("posts")
+
+		queryPostIDArray := bson.A{}
+		for id := range uniquePostIDs {
+			queryPostIDArray = append(queryPostIDArray, id)
 		}
-		collection := p.mongoClient.Database("post").Collection("post")
-		delim := ","
-		filter := `{"post_id": {"$in": ` + strings.Join(strings.Fields(fmt.Sprint(unique_pids)), delim) + `}}`
+		filter := bson.D{
+			{Key: "post_id", Value: bson.D{
+				{Key: "$in", Value: queryPostIDArray},
+			}},
+		}
 		cur, err := collection.Find(ctx, filter)
 		if err != nil {
 			logger.Error("error reading posts from mongodb", "msg", err.Error())
-			return []model.Post{}, err
+			return nil, err
 		}
-		cur.Decode(&new_posts) // ignore errors
-		values = append(values, new_posts...)
 
-		var wg sync.WaitGroup
-		for _, newPost := range new_posts {
-			wg.Add(1)
+		exists := cur.TryNext(ctx)
+		if exists {
+			err = cur.All(ctx, &newPosts)
+			if err != nil {
+				logger.Error("error parsing new posts from mongodb", "msg", err.Error())
+				return nil, err
+			}
+			values = append(values, newPosts...)
 
-			go func(newPost model.Post) error {
-				defer wg.Done()
-				postJson, err := json.Marshal(newPost)
-				if err != nil {
-					logger.Error("error converting post to json", "post", newPost)
-					return err
-				}
-				p.redisClient.Set(ctx, strconv.FormatInt(newPost.PostID, 10), postJson, 0)
-				return nil
-			}(newPost)
+			var wg sync.WaitGroup
+			for _, newPost := range newPosts {
+				wg.Add(1)
+
+				go func(newPost model.Post) error {
+					defer wg.Done()
+					postJson, err := json.Marshal(newPost)
+					if err != nil {
+						logger.Error("error converting post to json", "post", newPost)
+						return err
+					}
+					p.redisClient.Set(ctx, strconv.FormatInt(newPost.PostID, 10), postJson, 0)
+					return nil
+				}(newPost)
+			}
+			wg.Wait()
 		}
-		wg.Wait()
 	}
 	return values, nil
 }
-

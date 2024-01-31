@@ -222,9 +222,21 @@ func (s *socialGraphService) Follow(ctx context.Context, reqID int64, userID int
 		// Update follower->followee edges
 		defer wg.Done()
 		collection := s.mongoClient.Database("social-graph").Collection("social-graph")
-		searchNotExist := `{"$and": [{"user_id":` + followerIDStr + `}, {"followees": {"$not": {"$elemMatch": {"user_id": ` + followeeIDstr + `}}}}]}`
-		update := `{"$push": {"followees": {"user_id": ` + followerIDStr + `,"Timestamp": "` + timestamp.String() + `"}}}`
-		_, mongoUpdateFollowerErr = collection.UpdateOne(ctx, searchNotExist, update)
+		searchNotExist := bson.M{
+			"$and": []bson.M{
+				{"user_id": followerIDStr},
+				{"followees": bson.M{"$not": bson.M{"$elemMatch": bson.M{"user_id": followeeIDstr}}}},
+			},
+		}
+		pushFollower := bson.M{
+			"$push": bson.M{
+				"followees": bson.M{
+					"user_id":   followerIDStr,
+					"Timestamp": timestamp.String(),
+				},
+			},
+		}
+		_, mongoUpdateFollowerErr = collection.UpdateOne(ctx, searchNotExist, pushFollower)
 		if mongoUpdateFollowerErr != nil {
 			logger.Error("error updating followees in mongodb")
 		}
@@ -233,9 +245,21 @@ func (s *socialGraphService) Follow(ctx context.Context, reqID int64, userID int
 		// Update followee->follower edges
 		defer wg.Done()
 		collection := s.mongoClient.Database("social-graph").Collection("social-graph")
-		searchNotExist := `{"$and": [{"user_id":` + followeeIDstr + `}, {"followers": {"$not": {"$elemMatch": {"user_id": ` + followeeIDstr + `}}}}]}`
-		update := `{"$push": {"followers": {"user_id": ` + followeeIDstr + `,"Timestamp": "` + timestamp.String() + `"}}}`
-		_, mongoUpdateFolloweeErr = collection.UpdateOne(ctx, searchNotExist, update)
+		searchNotExist := bson.M{
+			"$and": []bson.M{
+				{"user_id": followeeIDstr},
+				{"followers": bson.M{"$not": bson.M{"$elemMatch": bson.M{"user_id": followeeIDstr}}}},
+			},
+		}
+		pushFollowees := bson.M{
+			"$push": bson.M{
+				"followers": bson.M{
+					"user_id":   followeeIDstr,
+					"Timestamp": timestamp.String(),
+				},
+			},
+		}
+		_, mongoUpdateFolloweeErr = collection.UpdateOne(ctx, searchNotExist, pushFollowees)
 		if mongoUpdateFolloweeErr != nil {
 			logger.Error("error updating followers in mongodb")
 		}

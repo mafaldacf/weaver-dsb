@@ -252,6 +252,7 @@ func (c *composePostService) composeAndUpload(ctx context.Context, reqID int64) 
 	post := model.Post {
 		PostID: 		postID,
 		ReqID: 			reqID,
+		Creator:    	creator,
 		Text: 			text,
 		UserMentions: 	userMentions,
 		Media: 			medias,

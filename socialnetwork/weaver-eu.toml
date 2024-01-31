@@ -11,6 +11,8 @@ region = "europe-west3"
 regions = ["europe-west3", "us-central1"]
 
 ["socialnetwork/pkg/services/PostStorageService"]
+redis_address = "localhost"
+redis_port = 6383
 mongodb_address = "localhost"
 mongodb_port = 27017
 region = "europe-west3"

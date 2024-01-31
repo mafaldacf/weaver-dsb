@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,8 +38,8 @@ func Serve(ctx context.Context, s *server) error {
 	mux.Handle("/wrk2-api/user/unfollow", instrument("user/unfollow", s.unfollowHandler, http.MethodGet, http.MethodPost))
 	mux.Handle("/wrk2-api/user/login", instrument("user/login", s.loginHandler, http.MethodGet, http.MethodPost))
 	mux.Handle("/wrk2-api/post/compose", instrument("post/compose", s.composePostHandler, http.MethodGet, http.MethodPost))
-	mux.Handle("/wrk2-api/home-timeline/read", instrument("home/timeline", s.readHomeTimelineHandler, http.MethodGet, http.MethodPost))
-	mux.Handle("/wrk2-api/user-timeline/read", instrument("user/timeline", s.readUserTimelineHandler, http.MethodGet, http.MethodPost))
+	mux.Handle("/wrk2-api/home-timeline/read", instrument("home-timeline/read", s.readHomeTimelineHandler, http.MethodGet, http.MethodPost))
+	mux.Handle("/wrk2-api/user-timeline/read", instrument("user-timeline/read", s.readUserTimelineHandler, http.MethodGet, http.MethodPost))
 
 	var handler http.Handler = mux
 	s.Logger(ctx).Info("wrk2-api available", "addr", s.lis)
@@ -61,6 +62,10 @@ func instrument(label string, fn func(http.ResponseWriter, *http.Request), metho
 	return weaver.InstrumentHandlerFunc(label, handler)
 }
 
+func genReqID() int64 {
+	return rand.New(rand.NewSource(time.Now().UnixNano())).Int63()
+}
+
 type registerParams struct {
 	reqID 		int64
 	firstName 	string
@@ -70,16 +75,47 @@ type registerParams struct {
 	userID 		int64
 }
 
-func genRegisterParams() registerParams {
+func validateRegisterParams(w http.ResponseWriter, r *http.Request) *registerParams {
+	if err := r.ParseForm(); err != nil {
+        http.Error(w, "error: " + err.Error(), http.StatusBadRequest)
+        return nil
+    }
+	var err error
 	params := registerParams {
-		reqID: 		rand.New(rand.NewSource(time.Now().UnixNano())).Int63(),
-		firstName: 	"firstname_0",
-		lastName: 	"lastname_0",
-		username: 	"user_0",
-		password: 	"password_0",
-		userID: 	0,
+		reqID: genReqID(),
+		userID:	-1,
 	}
-	return params
+	// get params
+    params.username = r.Form.Get("username")
+    params.firstName = r.Form.Get("first_name")
+    params.lastName = r.Form.Get("last_name")
+    params.password = r.Form.Get("password")
+	userIDstr := r.Form.Get("user_id")
+	
+	// validate types
+	if userIDstr != "" {
+		params.userID, err = strconv.ParseInt(userIDstr, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid user_id", http.StatusBadRequest)
+			return nil
+		}
+	}
+
+	// validate mandatory fields
+	if params.username == "" {
+        http.Error(w, "must provide a valid username", http.StatusBadRequest)
+		return nil
+    }
+	if params.firstName == "" {
+        http.Error(w, "must provide a valid first_name", http.StatusBadRequest)
+		return nil
+    }
+	if params.lastName == "" {
+        http.Error(w, "must provide a valid last_name", http.StatusBadRequest)
+		return nil
+    }
+
+	return &params
 }
 
 func (s *server) registerHandler(w http.ResponseWriter, r *http.Request) {
@@ -87,43 +123,11 @@ func (s *server) registerHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.Logger(ctx)
 	logger.Info("entering wkr2-api/user/register")
 
-    if err := r.ParseForm(); err != nil {
-        http.Error(w, "error: " + err.Error(), http.StatusBadRequest)
-        return
-    }
-	var err error
-	params := genRegisterParams()
-    params.username = r.Form.Get("username")
-    params.firstName = r.Form.Get("first_name")
-    params.lastName = r.Form.Get("last_name")
-    params.password = r.Form.Get("password")
-	params.userID = -1
-	userIDstr := r.Form.Get("user_id")
-	
-    if err != nil {
-        http.Error(w, "invalid user id", http.StatusBadRequest)
-        return
-    }
-    if params.username == "" {
-        http.Error(w, "must provide a valid username", http.StatusBadRequest)
+	params := validateRegisterParams(w, r)
+	if params == nil {
 		return
-    }
-	if params.firstName == "" {
-        http.Error(w, "must provide a valid first name", http.StatusBadRequest)
-		return
-    }
-	if params.lastName == "" {
-        http.Error(w, "must provide a valid last name", http.StatusBadRequest)
-		return
-    }
-	if userIDstr != "" {
-		params.userID, err = strconv.ParseInt(userIDstr, 10, 64)
-		if err != nil {
-			http.Error(w, "invalid user id", http.StatusBadRequest)
-			return
-		}
 	}
-
+	var err error
 	if params.userID == -1 {
 		err = s.userService.Get().RegisterUser(ctx, params.reqID, params.firstName, params.lastName, params.username, params.password)
 	} else {
@@ -142,20 +146,45 @@ func (s *server) registerHandler(w http.ResponseWriter, r *http.Request) {
 type followParams struct {
 	reqID 			int64
 	userID 			int64
-	followee_id 	int64
+	followeeID 		int64
 	username 		string
-	followee_name 	string
+	followeeName 	string
 }
 
-func genFollowParams() followParams {
+func validateFollowParams(w http.ResponseWriter, r *http.Request) *followParams {
+	if err := r.ParseForm(); err != nil {
+        http.Error(w, "error: " + err.Error(), http.StatusBadRequest)
+        return nil
+    }
+	
+	var err error
 	params := followParams {
-		reqID: 			rand.New(rand.NewSource(time.Now().UnixNano())).Int63(),
-		userID: 		0,
-		followee_id: 	1,
-		username: 		"user_0",
-		followee_name: 	"user_1",
+		reqID: 			genReqID(),
+		userID: 		-1,
+		followeeID: 	-1,
 	}
-	return params
+	// get params
+	userIDstr := r.Form.Get("user_id")
+	followeeIDstr := r.Form.Get("followee_id")
+    params.username = r.Form.Get("username")
+    params.followeeName = r.Form.Get("followee_name")
+	
+	// validate types
+	if userIDstr != "" {
+		params.userID, err = strconv.ParseInt(userIDstr, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid user_id", http.StatusBadRequest)
+			return nil
+		}
+	}
+	if followeeIDstr != "" {
+		params.followeeID, err = strconv.ParseInt(followeeIDstr, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid followee_id", http.StatusBadRequest)
+			return nil
+		}
+	}
+	return &params
 }
 
 func (s *server) followHandler(w http.ResponseWriter, r *http.Request) {
@@ -164,20 +193,25 @@ func (s *server) followHandler(w http.ResponseWriter, r *http.Request) {
 	logger.Info("entering wkr2-api/user/follow")
 	
 	var err error
-	params := genFollowParams()
-	if params.userID != -1 && params.followee_id != -1 { 
-		err = s.socialGraphService.Get().Follow(ctx, params.reqID, params.userID, params.followee_id)
-	} else if params.username != "" && params.followee_name != "" {
-		err = s.socialGraphService.Get().FollowWithUsername(ctx, params.reqID, params.username, params.followee_name)
+	params := validateFollowParams(w, r)
+	if params == nil {
+		return
+	}
+
+	if params.userID != -1 && params.followeeID != -1 { 
+		err = s.socialGraphService.Get().Follow(ctx, params.reqID, params.userID, params.followeeID)
+	} else if params.username != "" && params.followeeName != "" {
+		err = s.socialGraphService.Get().FollowWithUsername(ctx, params.reqID, params.username, params.followeeName)
 	} else {
-		err = fmt.Errorf("invalid arguments")
+		http.Error(w, "error: " + "invalid arguments", http.StatusBadRequest)
+		return
 	}
 
 	if err != nil {
-		http.Error(w, "error: " + err.Error(), http.StatusBadRequest)
+		http.Error(w, "error: " + err.Error(), http.StatusInternalServerError)
 		return
 	}
-	response := fmt.Sprintf("success! user %s (id=%d) followed user %s (id=%d)\n", params.username, params.userID, params.followee_name, params.followee_id)
+	response := fmt.Sprintf("success! user %s (id=%d) followed user %s (id=%d)\n", params.username, params.userID, params.followeeName, params.followeeID)
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte(response))
 }
@@ -187,9 +221,25 @@ func (s *server) unfollowHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.Logger(ctx)
 	logger.Info("entering wkr2-api/user/unfollow")
 
-	//TODO!!!
+	var err error
+	params := validateFollowParams(w, r)
+	if params == nil {
+		return
+	}
+	if params.userID != -1 && params.followeeID != -1 { 
+		err = s.socialGraphService.Get().Unfollow(ctx, params.reqID, params.userID, params.followeeID)
+	} else if params.username != "" && params.followeeName != "" {
+		err = s.socialGraphService.Get().UnfollowWithUsername(ctx, params.reqID, params.username, params.followeeName)
+	} else {
+		http.Error(w, "error: " + "invalid arguments", http.StatusBadRequest)
+		return
+	}
 
-	response := "success! :)\n"
+	if err != nil {
+		http.Error(w, "error: " + err.Error(), http.StatusInternalServerError)
+		return
+	}
+	response := fmt.Sprintf("success! user %s (id=%d) unfollowed user %s (id=%d)\n", params.username, params.userID, params.followeeName, params.followeeID)
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte(response))
 }
@@ -200,13 +250,29 @@ type LoginParams struct {
 	password 	string
 }
 
-func getLoginParams() LoginParams {
+func validateLoginParams(w http.ResponseWriter, r *http.Request) *LoginParams {
+	if err := r.ParseForm(); err != nil {
+        http.Error(w, "error: " + err.Error(), http.StatusBadRequest)
+        return nil
+    }
+
 	params := LoginParams {
-		reqID: 		rand.New(rand.NewSource(time.Now().UnixNano())).Int63(),
-		username: 	"user_0",
-		password: 	"password_0",
+		reqID:	genReqID(),
 	}
-	return params
+	// get params
+    params.username = r.Form.Get("username")
+    params.password = r.Form.Get("password")
+
+	// validate mandatory fields
+	if params.username == "" {
+        http.Error(w, "must provide a valid username", http.StatusBadRequest)
+		return nil
+    }
+	if params.password == "" {
+        http.Error(w, "must provide a valid password", http.StatusBadRequest)
+		return nil
+    }
+	return &params
 }
 
 func (s *server) loginHandler(w http.ResponseWriter, r *http.Request) {
@@ -214,7 +280,11 @@ func (s *server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.Logger(ctx)
 	logger.Info("entering wkr2-api/user/login")
 
-	params := getLoginParams()
+	params := validateLoginParams(w, r)
+	if params == nil {
+		return
+	}
+
 	token, err := s.userService.Get().Login(ctx, params.reqID, params.username, params.password)
 	if err != nil {
 		http.Error(w, "error: " + err.Error(), http.StatusInternalServerError)
@@ -226,9 +296,9 @@ func (s *server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(response))
 }
 
-type composePostParams struct {
+type ComposePostParams struct {
 	text 		string
-	userID 	int64
+	userID 		int64
 	username 	string
 	reqID 		int64
 	mediaTypes 	[]string
@@ -236,17 +306,75 @@ type composePostParams struct {
 	postType 	model.PostType
 }
 
-func genComposePostParams() composePostParams {
-	params := composePostParams {
-		text: 		"HelloWorld",
-		userID: 	0,
-		username: 	"user_0",
-		reqID: 		rand.New(rand.NewSource(time.Now().UnixNano())).Int63(),
-		mediaTypes: []string{"png", "png"},
-		mediaIDs: 	[]int64{0, 1},
-		postType: 	model.POST_TYPE_POST,
+func validateComposePostParams(w http.ResponseWriter, r *http.Request) *ComposePostParams {
+	if err := r.ParseForm(); err != nil {
+        http.Error(w, "error: " + err.Error(), http.StatusBadRequest)
+        return nil
+    }
+	var err error
+	params := ComposePostParams {
+		reqID:	genReqID(),
+		userID: -1,
+		postType: model.PostType(-1),
 	}
-	return params
+	// get params
+    params.username = r.Form.Get("username")
+    params.text = r.Form.Get("text")
+	userIDstr := r.Form.Get("user_id")
+	postTypeStr := r.Form.Get("post_type")
+	mediaTypesStr := r.Form.Get("media_types")
+	mediaIDsStr := r.Form.Get("media_ids")
+	
+	// validate types
+	if userIDstr != "" {
+		params.userID, err = strconv.ParseInt(userIDstr, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid user_id", http.StatusBadRequest)
+			return nil
+		}
+	}
+	if postTypeStr != "" {
+		postType, err := strconv.ParseInt(postTypeStr, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid post_type. Available types: 0-POST, 1-REPOST, 2-REPLY, 3-DM", http.StatusBadRequest)
+			return nil
+		}
+		params.postType = model.PostType(postType)
+	}
+	if mediaTypesStr != "" {
+		params.mediaTypes = strings.Split(mediaTypesStr, ",")
+	}
+	if mediaIDsStr != "" {
+		mediaIDsStrSlice := strings.Split(mediaIDsStr, ",")
+		for _, idStr := range mediaIDsStrSlice {
+			id, err := strconv.ParseInt(idStr, 10, 64)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("error parsing media ids: %s", err.Error()), http.StatusBadRequest)
+				return nil
+			}
+			params.mediaIDs = append(params.mediaIDs, id)
+		}
+	}
+	
+	// validate mandatory fields
+	if params.username == "" {
+		http.Error(w, "must provide a valid username", http.StatusBadRequest)
+		return nil
+    }
+	if params.text == "" {
+		http.Error(w, "must provide a valid text", http.StatusBadRequest)
+		return nil
+    }
+	if params.userID == -1 {
+		http.Error(w, "must provide a user_id", http.StatusBadRequest)
+		return nil
+	}
+	if params.postType < 0 || params.postType > 3 {
+		http.Error(w, "invalid post_type. Available types: 0-POST, 1-REPOST, 2-REPLY, 3-DM", http.StatusBadRequest)
+		return nil
+	}
+
+	return &params
 }
 
 func (s *server) composePostHandler(w http.ResponseWriter, r *http.Request) {
@@ -254,7 +382,11 @@ func (s *server) composePostHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.Logger(ctx)
 	logger.Info("entering wkr2-api/post/compose")
 
-	params := genComposePostParams()
+	params := validateComposePostParams(w, r)
+	if params == nil {
+		return
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(4)
 	var errs [4]error
@@ -290,21 +422,41 @@ func (s *server) composePostHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(response))
 }
 
-type readTimelineParams struct {
-	reqID 		int64
+type ReadTimelineParams struct {
+	reqID 	int64
 	userID 	int64
-	start 		int64
-	stop 		int64
+	start 	int64
+	stop 	int64
 }
 
-func genReadTimeline() readTimelineParams {
-	params := readTimelineParams {
-		reqID: 	rand.New(rand.NewSource(time.Now().UnixNano())).Int63(),
-		userID: 0,
-		start:  0,
-		stop:   time.Now().UnixMilli(),
+func validateReadTimelineParams(w http.ResponseWriter, r *http.Request) *ReadTimelineParams {
+	if err := r.ParseForm(); err != nil {
+        http.Error(w, "error: " + err.Error(), http.StatusBadRequest)
+        return nil
+    }
+	var err error
+	params := ReadTimelineParams {
+		reqID:	genReqID(),
+		userID: -1,
+		start: 	0,
+		stop: 	time.Now().UnixMilli(),
 	}
-	return params
+	// get params
+	userIDstr := r.Form.Get("user_id")
+	
+	// validate types
+	if userIDstr != "" {
+		params.userID, err = strconv.ParseInt(userIDstr, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid user_id", http.StatusBadRequest)
+			return nil
+		}
+	} else {
+		http.Error(w, "must provide a user_id", http.StatusBadRequest)
+		return nil
+	}
+
+	return &params
 }
 
 func (s *server) readHomeTimelineHandler(w http.ResponseWriter, r *http.Request) {
@@ -312,7 +464,10 @@ func (s *server) readHomeTimelineHandler(w http.ResponseWriter, r *http.Request)
 	logger := s.Logger(ctx)
 	logger.Info("entering wkr2-api/home-timeline/read")
 
-	params := genReadTimeline()
+	params := validateReadTimelineParams(w, r)
+	if params == nil {
+		return
+	}
 	posts, err := s.userTimelineService.Get().ReadUserTimeline(ctx, params.reqID, params.userID, params.start, params.stop)
 	if err != nil {
 		http.Error(w, "error: " + err.Error(), http.StatusInternalServerError)
@@ -332,8 +487,11 @@ func (s *server) readUserTimelineHandler(w http.ResponseWriter, r *http.Request)
 	logger := s.Logger(ctx)
 	logger.Info("entering wkr2-api/user-timeline/read")
 	
-	params := genReadTimeline()
-	posts, err := s.homeTimelineService.Get().ReadHomeTimeline(ctx, params.reqID, params.userID, params.start, params.stop)
+	params := validateReadTimelineParams(w, r)
+	if params == nil {
+		return
+	}
+	posts, err := s.userTimelineService.Get().ReadUserTimeline(ctx, params.reqID, params.userID, params.start, params.stop)
 	if err != nil {
 		http.Error(w, "error: " + err.Error(), http.StatusInternalServerError)
 		return

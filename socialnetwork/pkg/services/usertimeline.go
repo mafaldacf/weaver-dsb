@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"sync"
 
@@ -74,6 +73,7 @@ func (u *userTimelineService) Init(ctx context.Context) error {
 	return nil
 } */
 
+// WriteUserTimeline adds the postDb to the user (the postDb's writer) timeline
 func (u *userTimelineService) WriteUserTimeline(ctx context.Context, reqID int64, postID int64, userID int64, timestamp int64) error {
 	logger := u.Logger(ctx)
 	logger.Debug("entering WriteUserTimeline", "req_id", reqID, "post_id", postID, "user_id", userID, "timestamp", timestamp)
@@ -103,8 +103,20 @@ func (u *userTimelineService) WriteUserTimeline(ctx context.Context, reqID int64
 	} else {
 		postIDstr := strconv.FormatInt(postID, 10)
 		timestampstr := strconv.FormatInt(timestamp, 10)
-		update := fmt.Sprintf(`{"$push": {"Posts": {"$each": [{"PostID": %s, "Timestamp": %s}], "$position": 0}}}`, postIDstr, timestampstr)
-		_, err := collection.UpdateMany(ctx, filter, update)
+		pushPosts := bson.D{
+			{Key: "$push", Value: bson.D{
+				{Key: "Posts", Value: bson.D{
+					{Key: "$each", Value: bson.A{
+						bson.D{
+							{Key: "PostID", Value: postIDstr},
+							{Key: "Timestamp", Value: timestampstr},
+						},
+					}},
+					{Key: "$position", Value: 0},
+				}},
+			}},
+		}
+		_, err := collection.UpdateMany(ctx, filter, pushPosts)
 		if err != nil {
 			logger.Error("failed to insert user timeline")
 			return err
@@ -130,7 +142,7 @@ func (u *userTimelineService) readTimeline(ctx context.Context, userIDStr string
 	for _, result := range result {
 		id, err := strconv.ParseInt(result, 10, 64)
 		if err != nil {
-			logger.Error("error parsing post id from redis result")
+			logger.Error("error parsing postDb id from redis result")
 			return nil, err
 		}
 		postIDs = append(postIDs, id)
@@ -152,54 +164,56 @@ func (u *userTimelineService) ReadUserTimeline(ctx context.Context, reqID int64,
 	}
 
 	mongoStart := start + int64(len(postIDs))
-	var postsToCache []redis.Z
-	var timelinePosts []model.TimelinePostInfo
+	var newPosts []redis.Z
 	if mongoStart < stop {
 		collection := u.mongoClient.Database("user-timeline").Collection("user-timeline")
-		query := fmt.Sprintf(`{"UserID": %[1]d}`, userID)
+		query := bson.D{
+			{Key: "UserID", Value: userID},
+		}
 		opts := options.FindOptions{
-			Projection: fmt.Sprintf(`{"projection": {"posts": {"$slice": [0, %[1]d]}}}`, stop),
+			Projection: bson.D{
+				{Key: "posts", Value: bson.D{
+					{Key: "$slice", Value: bson.A{0, stop}},
+				}},
+			},
 		}
 		cur, err := collection.Find(ctx, query, &opts)
 		if err != nil {
 			logger.Error("error reading posts from mongodb", "msg", err.Error())
 			return nil, err
 		}
-		cur.Decode(&timelinePosts) // ignore errors
-		for _, timelinePost := range timelinePosts {
-			postIDs = append(postIDs, timelinePost.PostID)
-			postsToCache = append(postsToCache, redis.Z {
-				Member: timelinePost.PostID,
-				Score: float64(timelinePost.Timestamp),
+		var postsDb []model.TimelinePostInfo
+		cur.Decode(&postsDb) // ignore errors
+		for _, postDb := range postsDb {
+			postIDs = append(postIDs, postDb.PostID)
+			newPosts = append(newPosts, redis.Z {
+				Member: postDb.PostID,
+				Score: float64(postDb.Timestamp),
 			})
 		}
 	}
 
-	var postsErr, redisErr error
-	var postsWg, redisWg sync.WaitGroup
+	var postsErr error
+	var postsWg sync.WaitGroup
+	posts := []model.Post{}
+
 	postsWg.Add(1)
-	var posts []model.Post
 	go func() {
 		defer postsWg.Done()
 		posts, postsErr = u.postStorageService.Get().ReadPosts(ctx, reqID, postIDs)
 	}()
 
-	if len(timelinePosts) > 0 {
-		redisWg.Add(1)
-		go func() {
-			defer redisWg.Done()
-			_, redisErr = u.redisClient.ZAddNX(ctx, userIDStr, postsToCache...).Result()
-		}()
+	if len(newPosts) > 0 {
+		_, err = u.redisClient.ZAddNX(ctx, userIDStr, newPosts...).Result()
+		if err != nil {
+			logger.Error("error updating redis with new posts", "msg", err.Error())
+			return nil, err
+		}
 	}
 
 	postsWg.Wait()
 	if postsErr != nil {
-		logger.Error("error fetching posts from post storage service", "msg", err.Error())
-		return nil, err
-	}
-	redisWg.Wait()
-	if redisErr != nil {
-		logger.Error("error updating redis with new posts", "msg", err.Error())
+		logger.Error("error fetching posts from postDb storage service", "msg", err.Error())
 		return nil, err
 	}
 
