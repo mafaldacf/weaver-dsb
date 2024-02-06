@@ -56,15 +56,15 @@ type userService struct {
 	currentTimestamp   int64
 	secret             string
 	mongoClient        *mongo.Client
-	redisClient        *redis.Client //FIXME: should be memcached
+	redisClient        *redis.Client
 	mu                 sync.Mutex
 }
 
 type userServiceOptions struct {
-	MongoDBAddr string `toml:"mongodb_address"`
-	MongoDBPort int    `toml:"mongodb_port"`
-	RedisAddr   string `toml:"redis_address"`
-	RedisPort   int    `toml:"redis_port"`
+	MongoDBAddr 	string `toml:"mongodb_address"`
+	MongoDBPort 	int    `toml:"mongodb_port"`
+	MemCachedAddr 	string `toml:"memcached_addr"`
+	MemCachedPort 	int    `toml:"memcached_port"`
 }
 
 func (u *userService) getCounter(timestamp int64) (int64, error) {
@@ -111,10 +111,10 @@ func (u *userService) Init(ctx context.Context) error {
 		return err
 	}
 
-	u.redisClient = storage.RedisClient(u.Config().RedisAddr, u.Config().RedisPort)
+	u.redisClient = storage.RedisClient(u.Config().MemCachedAddr, u.Config().MemCachedPort)
 	logger.Info("user service running!",
 		"mongodb_addr", u.Config().MongoDBAddr, "mongodb_port", u.Config().MongoDBPort,
-		"redis_addr", u.Config().RedisAddr, "redis_port", u.Config().RedisPort,
+		"memcached_addr", u.Config().MemCachedAddr, "memcached_port", u.Config().MemCachedPort,
 	)
 	return nil
 }

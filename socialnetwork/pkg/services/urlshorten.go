@@ -8,6 +8,7 @@ import (
 	"socialnetwork/pkg/storage"
 
 	"github.com/ServiceWeaver/weaver"
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -21,24 +22,26 @@ type UrlShortenService interface {
 type urlShortenService struct {
 	weaver.Implements[UrlShortenService]
 	weaver.WithConfig[urlShortenServiceOptions]
-	composePostService  weaver.Ref[ComposePostService]
-	mongoClient 		*mongo.Client
-	hostname 			string
+	composePostService weaver.Ref[ComposePostService]
+	mongoClient        *mongo.Client
+	redisClient        *redis.Client
+	hostname           string
 }
 
 type urlShortenServiceOptions struct {
-	MongoDBAddr string `toml:"mongodb_address"`
-	MongoDBPort int    `toml:"mongodb_port"`
+	MongoDBAddr 	string `toml:"mongodb_address"`
+	MongoDBPort 	int    `toml:"mongodb_port"`
+	MemCachedAddr 	string `toml:"memcached_addr"`
+	MemCachedPort 	int    `toml:"memcached_port"`
 }
 
 func (u *urlShortenService) genRandomStr(length int) string {
 	b := make([]rune, length)
-    for i := range b {
-        b[i] = letterRunes[rand.Intn(len(letterRunes))]
-    }
-    return string(b)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
+	}
+	return string(b)
 }
-
 
 func (u *urlShortenService) Init(ctx context.Context) error {
 	logger := u.Logger(ctx)
@@ -49,20 +52,24 @@ func (u *urlShortenService) Init(ctx context.Context) error {
 		return err
 	}
 
-	logger.Info("url shorten service running!", "mongodb_addr", u.Config().MongoDBAddr, "mongodb_port", u.Config().MongoDBPort)
+	u.redisClient = storage.RedisClient(u.Config().MemCachedAddr, u.Config().MemCachedPort)
+	logger.Info("url shorten service running!",
+		"mongodb_addr", u.Config().MongoDBAddr, "mongodb_port", u.Config().MongoDBPort,
+		"memcached_addr", u.Config().MemCachedAddr, "memcached_port", u.Config().MemCachedPort,
+	)
 	return nil
 }
 
 func (u *urlShortenService) UploadUrls(ctx context.Context, reqID int64, urls []string) error {
 	logger := u.Logger(ctx)
 	logger.Debug("entering upload urls", "req_id", reqID, "urls", urls)
-	
+
 	var targetUrls []model.URL
 	var targetUrl_docs []interface{}
 	for _, url := range urls {
-		targetUrl := model.URL {
-			ExpandedUrl: url,
-			ShortenedUrl: u.hostname + u.genRandomStr(10), 
+		targetUrl := model.URL{
+			ExpandedUrl:  url,
+			ShortenedUrl: u.hostname + u.genRandomStr(10),
 		}
 		targetUrls = append(targetUrls, targetUrl)
 		targetUrl_docs = append(targetUrl_docs, targetUrl)

@@ -74,6 +74,6 @@ type TimelinePostInfo struct {
 }
 
 type Timeline struct {
-	UserID int64
-	Posts  []TimelinePostInfo
+	UserID int64 				 `bson:"user_id"`
+	Posts  []TimelinePostInfo 	 `bson:"posts"`
 }

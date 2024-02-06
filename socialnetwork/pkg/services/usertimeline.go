@@ -30,9 +30,9 @@ type userTimelineServiceOptions struct {
 type userTimelineService struct {
 	weaver.Implements[UserTimelineService]
 	weaver.WithConfig[userTimelineServiceOptions]
-	postStorageService 	weaver.Ref[PostStorageService]
-	mongoClient 		*mongo.Client
-	redisClient 		*redis.Client
+	postStorageService weaver.Ref[PostStorageService]
+	mongoClient        *mongo.Client
+	redisClient        *redis.Client
 }
 
 func (u *userTimelineService) Init(ctx context.Context) error {
@@ -52,7 +52,7 @@ func (u *userTimelineService) Init(ctx context.Context) error {
 // FIXME: panic: runtime error: hash of unhashable type bsonrw.TransitionError [recovered]
 /* func (u *userTimelineService) WriteUserTimeline(ctx context.Context, reqID int64, postID int64, userID int64, timestamp int64) error {
 	logger := u.Logger(ctx)
-	logger.Debug("entering WriteUserTimeline", "reqID", reqID, "postID", postID, "userID", userID, "timestamp", timestamp)
+	logger.Debug("entering WriteUserTimeline", "req_id", reqID, "post_id", postID, "user_id", userID, "timestamp", timestamp)
 
 	collection := u.mongoClient.Database("user-timeline").Collection("user-timeline")
 
@@ -61,7 +61,7 @@ func (u *userTimelineService) Init(ctx context.Context) error {
 	timestampstr := strconv.FormatInt(timestamp, 10)
 	filter := bson.M{"user_id": userIDStr}
 	update := fmt.Sprintf(`{"$push": {"posts": {"$each": [{"post_id": %s, "timestamp": %s}], "$position": 0}}}`, postIDstr, timestampstr)
-	
+
 	_, err := collection.UpdateMany(ctx, filter, update, &options.UpdateOptions {
 		// a new document is inserted if filter does not match any doc
 		Upsert: utils.BoolToPtr(false),
@@ -73,13 +73,13 @@ func (u *userTimelineService) Init(ctx context.Context) error {
 	return nil
 } */
 
-// WriteUserTimeline adds the postDb to the user (the postDb's writer) timeline
+// WriteUserTimeline adds the post to the user (the post's writer) timeline
 func (u *userTimelineService) WriteUserTimeline(ctx context.Context, reqID int64, postID int64, userID int64, timestamp int64) error {
 	logger := u.Logger(ctx)
 	logger.Debug("entering WriteUserTimeline", "req_id", reqID, "post_id", postID, "user_id", userID, "timestamp", timestamp)
-	
+
 	collection := u.mongoClient.Database("user-timeline").Collection("user-timeline")
-	
+
 	userIDStr := strconv.FormatInt(userID, 10)
 	filter := bson.M{"user_id": userIDStr}
 	cur, err := collection.Find(ctx, filter)
@@ -92,8 +92,8 @@ func (u *userTimelineService) WriteUserTimeline(ctx context.Context, reqID int64
 
 	if len(timelines) == 0 {
 		timeline := model.Timeline{UserID: userID, Posts: []model.TimelinePostInfo{{
-				PostID: postID, 
-				Timestamp: timestamp,
+			PostID:    postID,
+			Timestamp: timestamp,
 		}}}
 		_, err := collection.InsertOne(ctx, timeline)
 		if err != nil {
@@ -105,11 +105,11 @@ func (u *userTimelineService) WriteUserTimeline(ctx context.Context, reqID int64
 		timestampstr := strconv.FormatInt(timestamp, 10)
 		pushPosts := bson.D{
 			{Key: "$push", Value: bson.D{
-				{Key: "Posts", Value: bson.D{
+				{Key: "posts", Value: bson.D{
 					{Key: "$each", Value: bson.A{
 						bson.D{
-							{Key: "PostID", Value: postIDstr},
-							{Key: "Timestamp", Value: timestampstr},
+							{Key: "post_id", Value: postIDstr},
+							{Key: "timestamp", Value: timestampstr},
 						},
 					}},
 					{Key: "$position", Value: 0},
@@ -124,25 +124,25 @@ func (u *userTimelineService) WriteUserTimeline(ctx context.Context, reqID int64
 	}
 	return u.redisClient.ZAddNX(ctx, userIDStr, redis.Z{
 		Member: postID,
-		Score: float64(timestamp),
+		Score:  float64(timestamp),
 	}).Err()
 }
 
-// readTimeline is an helper function for reading timeline from redis with the same behavior as in the home timeline service
-func (u *userTimelineService) readTimeline(ctx context.Context, userIDStr string, start int64, stop int64) ([]int64, error) {
+// readCachedTimeline is an helper function for reading timeline from redis with the same behavior as in the home timeline service
+func (u *userTimelineService) readCachedTimeline(ctx context.Context, userIDStr string, start int64, stop int64) ([]int64, error) {
 	logger := u.Logger(ctx)
-	
+
 	result, err := u.redisClient.ZRevRange(ctx, userIDStr, start, stop-1).Result()
 	if err != nil {
 		logger.Error("error reading user timeline from redis")
 		return nil, err
 	}
-	
+
 	var postIDs []int64
 	for _, result := range result {
 		id, err := strconv.ParseInt(result, 10, 64)
 		if err != nil {
-			logger.Error("error parsing postDb id from redis result")
+			logger.Error("error parsing post id from redis result")
 			return nil, err
 		}
 		postIDs = append(postIDs, id)
@@ -158,62 +158,72 @@ func (u *userTimelineService) ReadUserTimeline(ctx context.Context, reqID int64,
 	}
 
 	userIDStr := strconv.FormatInt(userID, 10)
-	postIDs, err := u.readTimeline(ctx, userIDStr, start, stop)
+	postIDs, err := u.readCachedTimeline(ctx, userIDStr, start, stop)
 	if err != nil {
 		return nil, err
 	}
 
+	logger.Debug("read cached timeline", "post_ids", postIDs)
+
 	mongoStart := start + int64(len(postIDs))
-	var newPosts []redis.Z
+	logger.Debug("mongo?", "mongoStart", mongoStart, "start", start, "stop", stop)
+	var postsToCache []redis.Z
+	logger.Debug("going to mongodb?", "mongostart", mongoStart, "stop", stop)
 	if mongoStart < stop {
 		collection := u.mongoClient.Database("user-timeline").Collection("user-timeline")
 		query := bson.D{
-			{Key: "UserID", Value: userID},
+			{Key: "user_id", Value: userID},
 		}
-		opts := options.FindOptions{
+		opts := options.FindOneOptions{
 			Projection: bson.D{
 				{Key: "posts", Value: bson.D{
 					{Key: "$slice", Value: bson.A{0, stop}},
 				}},
 			},
 		}
-		cur, err := collection.Find(ctx, query, &opts)
-		if err != nil {
-			logger.Error("error reading posts from mongodb", "msg", err.Error())
+		result := collection.FindOne(ctx, query, &opts)
+		if result.Err() != nil {
+			logger.Error("error reading user-timeline posts from mongodb", "msg", result.Err().Error())
 			return nil, err
 		}
-		var postsDb []model.TimelinePostInfo
-		cur.Decode(&postsDb) // ignore errors
-		for _, postDb := range postsDb {
-			postIDs = append(postIDs, postDb.PostID)
-			newPosts = append(newPosts, redis.Z {
-				Member: postDb.PostID,
-				Score: float64(postDb.Timestamp),
+		var userTimeline model.Timeline
+		err := result.Decode(&userTimeline)
+		if err != nil && err != mongo.ErrNoDocuments {
+			logger.Error("error parsing user-timeline posts from mongodb", "msg", err.Error())
+			return nil, err
+		}
+		for idx, post := range userTimeline.Posts {
+			if int64(idx) >= mongoStart {
+				postIDs = append(postIDs, post.PostID)
+			}
+			postsToCache = append(postsToCache, redis.Z{
+				Member: post.PostID,
+				Score:  float64(post.Timestamp),
 			})
 		}
+		logger.Debug("got user-timeline posts from mongodb", "#posts", len(userTimeline.Posts))
 	}
 
-	var postsErr error
-	var postsWg sync.WaitGroup
+	var wg sync.WaitGroup
 	posts := []model.Post{}
 
-	postsWg.Add(1)
+	wg.Add(1)
 	go func() {
-		defer postsWg.Done()
-		posts, postsErr = u.postStorageService.Get().ReadPosts(ctx, reqID, postIDs)
+		defer wg.Done()
+		posts, err = u.postStorageService.Get().ReadPosts(ctx, reqID, postIDs)
 	}()
 
-	if len(newPosts) > 0 {
-		_, err = u.redisClient.ZAddNX(ctx, userIDStr, newPosts...).Result()
+	if len(postsToCache) > 0 {
+		_, err = u.redisClient.ZAddNX(ctx, userIDStr, postsToCache...).Result()
 		if err != nil {
 			logger.Error("error updating redis with new posts", "msg", err.Error())
 			return nil, err
 		}
 	}
 
-	postsWg.Wait()
-	if postsErr != nil {
-		logger.Error("error fetching posts from postDb storage service", "msg", err.Error())
+	wg.Wait()
+	if err != nil {
+		logger.Error("error fetching posts from post storage service", "msg", err.Error())
 		return nil, err
 	}
 

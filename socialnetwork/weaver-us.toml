@@ -2,60 +2,64 @@
 # Services
 # --------
 
-["socialnetwork/services/ComposePostService"]
+["socialnetwork/pkg/services/ComposePostService"]
 redis_address = "localhost"
-redis_port = 6382
+redis_port = 6381
 rabbitmq_address = "localhost"
 rabbitmq_port = 5673
 region = "us-central1"
 regions = ["europe-west3", "us-central1"]
 
-["socialnetwork/services/PostStorageService"]
+["socialnetwork/pkg/services/PostStorageService"]
 mongodb_address = "localhost"
 mongodb_port = 27018
-region = "us-central1"
-
-["socialnetwork/services/WriteHomeTimelineService"]
-rabbitmq_address = "localhost"
-rabbitmq_port = 5673
-mongodb_address = "localhost"
-mongodb_port = 27018
-redis_address = "localhost"
-redis_port = 6383
-num_workers = 4
+memcached_addr = "localhost"
+memcached_port = 11212
 region = "us-central1"
 
 ["socialnetwork/pkg/services/HomeTimelineService"]
 redis_address = "localhost"
-redis_port = 6381
+redis_port = 6382
 
-["socialnetwork/services/UserTimelineService"]
+["socialnetwork/pkg/services/WriteHomeTimelineService"]
+rabbitmq_address = "localhost"
+rabbitmq_port = 5672
+mongodb_address = "localhost"
+mongodb_port = 27018 # COMPOSE POST US
 redis_address = "localhost"
-redis_port = 6383
+redis_port = 6382 # = home-timeline service cache
+num_workers = 4
+region = "us-central1"
+
+["socialnetwork/pkg/services/UserTimelineService"]
 mongodb_address = "localhost"
 mongodb_port = 27018
+redis_address = "localhost"
+redis_port = 6383
 
 ["socialnetwork/pkg/services/UrlShortenService"]
 mongodb_address = "localhost"
 mongodb_port = 27018
-
-["socialnetwork/pkg/services/UserMentionService"]
-redis_address = "localhost"
-redis_port = 6383
-mongodb_address = "localhost"
-mongodb_port = 27018
+memcached_addr = "localhost"
+memcached_port = 11213
 
 ["socialnetwork/pkg/services/UserService"]
-redis_address = "localhost"
-redis_port = 6383
 mongodb_address = "localhost"
 mongodb_port = 27018
+memcached_addr = "localhost"
+memcached_port = 11214
+
+["socialnetwork/pkg/services/UserMentionService"]
+mongodb_address = "localhost"
+mongodb_port = 27018
+memcached_addr = "localhost"
+memcached_port = 11214 # user service cache
 
 ["socialnetwork/pkg/services/SocialGraphService"]
-redis_address = "localhost"
-redis_port = 6380
 mongodb_address = "localhost"
-mongodb_port = 27017
+mongodb_port = 27018
+redis_address = "localhost"
+redis_port = 6384
 
 # ----------
 # Deployment

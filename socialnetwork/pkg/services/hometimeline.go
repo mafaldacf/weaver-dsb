@@ -34,8 +34,8 @@ func (h *homeTimelineService) Init(ctx context.Context) error {
 	return nil
 }
 
-// readTimeline is an helper function for reading timeline from redis with the same behavior as in the user timeline service
-func (h *homeTimelineService) readTimeline(ctx context.Context, userID int64, start int64, stop int64) ([]int64, error) {
+// readCachedTimeline is an helper function for reading timeline from redis with the same behavior as in the user timeline service
+func (h *homeTimelineService) readCachedTimeline(ctx context.Context, userID int64, start int64, stop int64) ([]int64, error) {
 	logger := h. Logger(ctx)
 	
 	userIDStr := strconv.FormatInt(userID, 10)
@@ -64,7 +64,7 @@ func (h *homeTimelineService) ReadHomeTimeline(ctx context.Context, reqID int64,
 		return []model.Post{}, nil
 	}
 
-	postIDs, err := h.readTimeline(ctx, userID, start, stop)
+	postIDs, err := h.readCachedTimeline(ctx, userID, start, stop)
 	if err != nil {
 		return nil, err
 	}

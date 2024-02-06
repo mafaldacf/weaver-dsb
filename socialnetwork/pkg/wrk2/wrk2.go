@@ -439,7 +439,7 @@ func validateReadTimelineParams(w http.ResponseWriter, r *http.Request) *ReadTim
 		reqID:	genReqID(),
 		userID: -1,
 		start: 	0,
-		stop: 	time.Now().UnixMilli(),
+		stop: 	10,
 	}
 	// get params
 	userIDstr := r.Form.Get("user_id")
@@ -468,18 +468,25 @@ func (s *server) readHomeTimelineHandler(w http.ResponseWriter, r *http.Request)
 	if params == nil {
 		return
 	}
-	posts, err := s.userTimelineService.Get().ReadUserTimeline(ctx, params.reqID, params.userID, params.start, params.stop)
+	posts, err := s.homeTimelineService.Get().ReadHomeTimeline(ctx, params.reqID, params.userID, params.start, params.stop)
 	if err != nil {
 		http.Error(w, "error: " + err.Error(), http.StatusInternalServerError)
 		return
 	}
-	response, err := json.Marshal(posts)
-	if err != nil {
-		http.Error(w, "error: " + err.Error(), http.StatusInternalServerError)
-		return
+	// response, err := json.Marshal(posts)
+	// iterate to add new line in between posts
+	for i, post := range posts {
+		postJSON, err := json.Marshal(post)
+		if err != nil {
+			http.Error(w, "error: " + err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Write(postJSON)
+		if i < len(posts)-1 {
+			w.Write([]byte("\n"))
+		}
 	}
 	w.Header().Set("Content-Type", "text/plain")
-	w.Write(response)
 }
 
 func (s *server) readUserTimelineHandler(w http.ResponseWriter, r *http.Request) {
@@ -496,11 +503,19 @@ func (s *server) readUserTimelineHandler(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "error: " + err.Error(), http.StatusInternalServerError)
 		return
 	}
-	response, err := json.Marshal(posts)
-	if err != nil {
-		http.Error(w, "error: " + err.Error(), http.StatusInternalServerError)
-		return
+
+	// response, err := json.Marshal(posts)
+	// iterate to add new line in between posts
+	for i, post := range posts {
+		postJSON, err := json.Marshal(post)
+		if err != nil {
+			http.Error(w, "error: " + err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Write(postJSON)
+		if i < len(posts)-1 {
+			w.Write([]byte("\n"))
+		}
 	}
 	w.Header().Set("Content-Type", "text/plain")
-	w.Write(response)
 }

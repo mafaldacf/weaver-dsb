@@ -12,6 +12,7 @@ import (
 	"socialnetwork/pkg/storage"
 
 	"github.com/ServiceWeaver/weaver"
+	"github.com/ServiceWeaver/weaver/metrics"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/attribute"
@@ -49,6 +50,13 @@ type composePostServiceOptions struct {
 	Region           string   `toml:"region"`
 	Regions          []string `toml:"regions"`
 }
+
+var (
+	composed_posts = metrics.NewCounter(
+		"composed_posts",
+		"The number of composed posts",
+	)
+)
 
 func (c *composePostService) Init(ctx context.Context) error {
 	logger := c.Logger(ctx)
@@ -268,18 +276,19 @@ func (c *composePostService) composeAndUpload(ctx context.Context, reqID int64) 
 	// --- Post Storage
 	logger.Debug("remotely calling PostStorageService")
 
+	composed_posts.Inc()
+
 	err := c.postStorageService.Get().StorePost(ctx, reqID, post)
 	if err != nil {
 		logger.Warn("error calling post storage service", "msg", err.Error())
 		return err
 	}
 
-	// --- Evaluation
-	trace.SpanFromContext(ctx).AddEvent("composing post",
-		trace.WithAttributes(
-			attribute.Int64("postID", postID),
-			attribute.Int64("queue_start_ms", time.Now().UnixMilli()),
-		))
+	trace.SpanFromContext(ctx).SetAttributes(
+		attribute.Int64("ts", timestamp),
+		attribute.Int64("post_id", postID),
+		attribute.Int64("composepost_write_notification_ts", time.Now().UnixMilli()),
+	)
 
 	// --- Write Home Timeline
 	logger.Debug("queueing message to rabbitmq")

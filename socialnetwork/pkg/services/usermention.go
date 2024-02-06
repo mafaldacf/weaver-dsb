@@ -21,16 +21,16 @@ type UserMentionService interface {
 type userMentionService struct {
 	weaver.Implements[UserMentionService]
 	weaver.WithConfig[userMentionServiceOptions]
-	composePost   weaver.Ref[ComposePostService]
-	mongoClient   *mongo.Client
-	redisClient   *redis.Client
+	composePost weaver.Ref[ComposePostService]
+	mongoClient *mongo.Client
+	redisClient *redis.Client
 }
 
 type userMentionServiceOptions struct {
-	MongoDBAddr string `toml:"mongodb_address"`
-	MongoDBPort int    `toml:"mongodb_port"`
-	RedisAddr   string `toml:"redis_address"`
-	RedisPort   int    `toml:"redis_port"`
+	MongoDBAddr 	string `toml:"mongodb_address"`
+	MongoDBPort 	int    `toml:"mongodb_port"`
+	MemCachedAddr 	string `toml:"memcached_addr"`
+	MemCachedPort 	int    `toml:"memcached_port"`
 }
 
 func (u *userMentionService) Init(ctx context.Context) error {
@@ -42,11 +42,11 @@ func (u *userMentionService) Init(ctx context.Context) error {
 		return err
 	}
 
-	u.redisClient = storage.RedisClient(u.Config().RedisAddr, u.Config().RedisPort)
+	u.redisClient = storage.RedisClient(u.Config().MemCachedAddr, u.Config().MemCachedPort)
 
 	logger.Info("user mention service running!",
-		"mongodb_addr", u.Config().MongoDBAddr, "mongodb_port", u.Config().MongoDBPort, 
-		"redis_addr", u.Config().RedisAddr, "redis_port", u.Config().RedisPort,
+		"mongodb_addr", u.Config().MongoDBAddr, "mongodb_port", u.Config().MongoDBPort,
+		"memcached_addr", u.Config().MemCachedAddr, "memcached_port", u.Config().MemCachedPort,
 	)
 	return nil
 }
@@ -54,14 +54,14 @@ func (u *userMentionService) Init(ctx context.Context) error {
 func (u *userMentionService) UploadUserMentions(ctx context.Context, reqID int64, usernames []string) error {
 	logger := u.Logger(ctx)
 	logger.Debug("entering UploadUserMentions", "req_id", reqID, "usernames", usernames)
-	
+
 	usersNotCached := make(map[string]bool)
 	revLookup := make(map[string]string)
 	var keys []string
 	for _, name := range usernames {
 		usersNotCached[name] = true
-		keys = append(keys, name + ":user_id")
-		revLookup[name + ":user_id"] = name
+		keys = append(keys, name+":user_id")
+		revLookup[name+":user_id"] = name
 	}
 	values := make([]int64, len(keys))
 	var retvals []interface{}
@@ -87,7 +87,7 @@ func (u *userMentionService) UploadUserMentions(ctx context.Context, reqID int64
 	var userMentions []model.UserMention
 	for i, key := range keys {
 		user_mention := model.UserMention{
-			UserID: values[i], 
+			UserID:   values[i],
 			Username: revLookup[key],
 		}
 		userMentions = append(userMentions, user_mention)
@@ -99,7 +99,7 @@ func (u *userMentionService) UploadUserMentions(ctx context.Context, reqID int64
 			names = append(names, name)
 		}
 		collection := u.mongoClient.Database("user").Collection("user")
-		filter := `{"username": {"$in": ` + strings.Join(strings.Fields(fmt.Sprint(names)), ",")+ `}}` 
+		filter := `{"username": {"$in": ` + strings.Join(strings.Fields(fmt.Sprint(names)), ",") + `}}`
 		cur, err := collection.Find(ctx, filter)
 		if err != nil {
 			return err

@@ -91,12 +91,11 @@ func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []
 		return err
 	}
 
-	logger.Debug("received rabbitmq message", "postid", msg.PostID)
+	logger.Debug("received rabbitmq message", "post_id", msg.PostID)
 
-	trace.SpanFromContext(ctx).AddEvent("reading rabbitmq message",
-		trace.WithAttributes(
-			attribute.Int64("queue_end_ms", time.Now().UnixMilli()),
-		))
+	trace.SpanFromContext(ctx).SetAttributes(
+		attribute.Int64("wht_read_notification_ts", time.Now().UnixMilli()),
+	)
 
 	db := w.mongoClient.Database("post-storage")
 	collection := db.Collection("posts")
@@ -106,6 +105,9 @@ func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []
 	err = collection.FindOne(ctx, filter, nil).Decode(&post)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
+			trace.SpanFromContext(ctx).SetAttributes(
+				attribute.Bool("poststorage_consistent_read", false),
+			)
 			logger.Debug("inconsistency!")
 			inconsistencies.Inc()
 			return nil
@@ -114,8 +116,11 @@ func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []
 			return err
 		}
 	}
+	trace.SpanFromContext(ctx).SetAttributes(
+		attribute.Bool("poststorage_consistent_read", true),
+	)
 
-	logger.Debug("found post! :)", "postid", post.PostID, "text", post.Text)
+	logger.Debug("found post! :)", "post_id", post.PostID, "text", post.Text)
 
 	followersID, err := w.socialGraphService.Get().GetFollowers(ctx, msg.ReqID, msg.UserID)
 	if err != nil {

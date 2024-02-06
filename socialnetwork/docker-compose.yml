@@ -3,26 +3,52 @@ services:
   # ------------
   # CACHE: REDIS
   # ------------
-  home-timeline-redis-eu:
+  compose-post-redis-eu:
     image: redis
-    hostname: home-timeline-redis-eu
+    hostname: compose-post-redis-eu
     ports:
       - 6381:6379
-    command: 'redis-server --slaveof home-timeline-redis-eu 6379 --replica-read-only no'
     restart: 'no'
     deploy:
       placement:
         constraints: [node.hostname == weaver-dsb-db-eu]
+    networks:
+      - deathstarbench_network
+  #compose-post-redis-us:
+  #  image: redis
+  #  hostname: compose-post-redis-eu
+  #  ports:
+  #    - 6381:6379
+  #  command: 'redis-server --slaveof compose-post-redis-eu 6379 --replica-read-only no'
+  #  restart: 'no'
+  #  deploy:
+  #    placement:
+  #      constraints: [node.hostname == weaver-dsb-db-eu]
+  #  networks:
+  #    - deathstarbench_network
+  home-timeline-redis-eu:
+    image: redis
+    hostname: home-timeline-redis-eu
+    ports:
+      - 6382:6379
+    restart: 'no'
+    deploy:
+      placement:
+        constraints: [node.hostname == weaver-dsb-db-eu]
+    networks:
+      - deathstarbench_network
   #home-timeline-redis-us:
   #  image: redis
   #  hostname: home-timeline-redis-eu
   #  command: 'redis-server --slaveof home-timeline-redis-eu 6379 --replica-read-only no'
   #  ports:
-  #    6381:6379
+  #    6382:6379
   #  restart: 'no'
   #  deploy:
   #    placement:
   #      constraints: [node.hostname == weaver-dsb-db-us]
+  #  networks:
+  #    - deathstarbench_network
   user-timeline-redis-eu:
     image: redis
     hostname: user-timeline-redis-eu
@@ -48,9 +74,9 @@ services:
   #    - deathstarbench_network
   social-graph-redis-eu:
     image: redis
-    hostname: user-timeline-redis-eu
+    hostname: social-graph-redis-eu
     ports:
-      - 6380:6379
+      - 6384:6379
     restart: 'no'
     deploy:
       placement:
@@ -59,7 +85,7 @@ services:
       - deathstarbench_network
   #social-graph-redis-us:
   #  image: redis
-  #  hostname: user-timeline-redis-us
+  #  hostname: social-graph-redis-us
   #  ports:
   #    - 6380:6379
   #  command: 'redis-server --slaveof social-graph-redis-eu 6379 --replica-read-only no'
@@ -69,27 +95,82 @@ services:
   #      constraints: [node.hostname == weaver-dsb-db-us]
   #  networks:
   #    - deathstarbench_network
-  compose-post-redis-eu:
-    image: redis
-    hostname: user-timeline-redis-eu
+
+  # ----------------
+  # CACHE: MEMCACHED
+  # ----------------
+  post-storage-memcached-eu:
+    image: memcached
+    hostname: post-storage-memcached-eu
+    command: memcached -m 1024
     ports:
-      - 6382:6379
+      - 11212:11211
     restart: 'no'
     deploy:
       placement:
         constraints: [node.hostname == weaver-dsb-db-eu]
     networks:
       - deathstarbench_network
-  #compose-post-redis-us:
+  #post-storage-memcached-us:
   #  image: redis
-  #  hostname: user-timeline-redis-eu
+  #  hostname: post-storage-memcached-eu
+  #  command: memcached -m 1024
   #  ports:
-  #    - 6382:6379
-  #  command: 'redis-server --slaveof compose-post-redis-eu 6379 --replica-read-only no'
+  #    - 11212:6379
+  #  command: 'redis-server --slaveof post-storage-memcached-eu 6379 --replica-read-only no'
   #  restart: 'no'
   #  deploy:
   #    placement:
   #      constraints: [node.hostname == weaver-dsb-db-eu]
+  #  networks:
+  #    - deathstarbench_network
+  url-shorten-memcached-eu:
+    image: memcached
+    hostname: url-shorten-memcached-eu
+    command: memcached -m 1024
+    ports:
+      - 11213:11211
+    restart: 'no'
+    deploy:
+      placement:
+        constraints: [node.hostname == weaver-dsb-db-eu]
+    networks:
+      - deathstarbench_network
+  #url-shorten-memcached-us:
+  #  image: redis
+  #  hostname: url-shorten-memcached-us
+  #  command: memcached -m 1024
+  #  ports:
+  #    - 11213:6379
+  #  command: 'redis-server --slaveof url-shorten-memcached-eu 6379 --replica-read-only no'
+  #  restart: 'no'
+  #  deploy:
+  #    placement:
+  #      constraints: [node.hostname == weaver-dsb-db-us]
+  #  networks:
+  #    - deathstarbench_network
+  user-memcached-eu:
+    image: memcached
+    hostname: user-memcached-eu
+    command: memcached -m 1024
+    ports:
+      - 11214:11211
+    restart: 'no'
+    deploy:
+      placement:
+        constraints: [node.hostname == weaver-dsb-db-eu]
+    networks:
+      - deathstarbench_network
+  #user-memcached-us:
+  #  image: memcached
+  #  hostname: user-memcached-us
+  #  ports:
+  #    - 11214:6379
+  #  command: 'redis-server --slaveof user-memcached-eu 6379 --replica-read-only no'
+  #  restart: 'no'
+  #  deploy:
+  #    placement:
+  #      constraints: [node.hostname == weaver-dsb-db-us]
   #  networks:
   #    - deathstarbench_network
 
