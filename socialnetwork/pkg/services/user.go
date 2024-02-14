@@ -126,7 +126,7 @@ func (u *userService) Login(ctx context.Context, reqID int64, username string, p
 	result, err := u.redisClient.Get(ctx, username+":Login").Bytes()
 	if err != nil && err != redis.Nil {
 		// error reading cache
-		logger.Error("error reading user login info from cache", "msg", err.Error())
+		logger.Error("error reading user login info from cache", "msg", err.Error(), "username", username)
 		return "", err
 	} else if err == nil {
 		// username found in cache
@@ -267,7 +267,7 @@ func (u *userService) UploadCreatorWithUsername(ctx context.Context, reqID int64
 	if err != nil {
 		if err != redis.Nil {
 			// error reading cache
-			logger.Error("error reading user login info from cache", "msg", err.Error())
+			logger.Error("error reading creator info from cache", "msg", err.Error(), "username", username)
 			return err
 		}
 		// user not found in cache
@@ -312,7 +312,7 @@ func (u *userService) GetUserId(ctx context.Context, reqID int64, username strin
 	if err != nil {
 		if err != redis.Nil {
 			// error reading cache
-			logger.Error("error reading user login info from cache", "msg", err.Error())
+			logger.Error("error reading user id info from cache", "msg", err.Error(), "username", username)
 			return 0, err
 		}
 		// user not found in cache

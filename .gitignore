@@ -6,3 +6,12 @@ socialnetwork/terraform/.terraform.lock.hcl
 socialnetwork/terraform/terraform.tfstate
 socialnetwork/terraform/terraform.tfstate.backup
 **/weaver_gen.go
+socialnetwork/wrk2/obj/*
+socialnetwork/wrk2/wrk
+socialnetwork/wrk2/deps/luajit/src/*.o
+socialnetwork/wrk2/deps/luajit/src/host/*.o
+
+socialnetwork/wrk2/deps/luajit/src/host/buildvm
+socialnetwork/wrk2/deps/luajit/src/host/minilua
+socialnetwork/wrk2/deps/luajit/src/libluajit.a
+socialnetwork/wrk2/deps/luajit/src/luajit
