@@ -1,7 +1,7 @@
 socket = require "socket"
 math.randomseed(socket.gettime()*1000)
 math.random(); math.random(); math.random()
-JSON = require("JSON")
+json = require "json"
 stringx = require "pl.stringx"
 tablex = require "pl.tablex"
 pretty = require 'pl.pretty'

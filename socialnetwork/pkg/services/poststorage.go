@@ -90,7 +90,7 @@ func (p *postStorageService) ReadPost(ctx context.Context, reqID int64, postID i
 
 	var post model.Post
 	postIDStr := strconv.FormatInt(postID, 10)
-	result, err := p.memCachedClient.Get(postIDStr)
+	item, err := p.memCachedClient.Get(postIDStr)
 
 	if err != nil && err != memcache.ErrCacheMiss {
 		// error reading cache
@@ -99,7 +99,7 @@ func (p *postStorageService) ReadPost(ctx context.Context, reqID int64, postID i
 	}
 	if err == nil {
 		// post found in cache
-		err := json.Unmarshal(result.Value, &post)
+		err := json.Unmarshal(item.Value, &post)
 		if err != nil {
 			logger.Error("error parsing post from cache result", "msg", err.Error())
 			return post, err

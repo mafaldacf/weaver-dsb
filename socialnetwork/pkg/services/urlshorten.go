@@ -8,7 +8,7 @@ import (
 	"socialnetwork/pkg/storage"
 
 	"github.com/ServiceWeaver/weaver"
-	"github.com/redis/go-redis/v9"
+	"github.com/bradfitz/gomemcache/memcache"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -24,7 +24,7 @@ type urlShortenService struct {
 	weaver.WithConfig[urlShortenServiceOptions]
 	composePostService weaver.Ref[ComposePostService]
 	mongoClient        *mongo.Client
-	redisClient        *redis.Client
+	memCachedClient    *memcache.Client
 	hostname           string
 }
 
@@ -52,7 +52,7 @@ func (u *urlShortenService) Init(ctx context.Context) error {
 		return err
 	}
 
-	u.redisClient = storage.RedisClient(u.Config().MemCachedAddr, u.Config().MemCachedPort)
+	u.memCachedClient = storage.MemCachedClient(u.Config().MemCachedAddr, u.Config().MemCachedPort)
 	logger.Info("url shorten service running!",
 		"mongodb_addr", u.Config().MongoDBAddr, "mongodb_port", u.Config().MongoDBPort,
 		"memcached_addr", u.Config().MemCachedAddr, "memcached_port", u.Config().MemCachedPort,

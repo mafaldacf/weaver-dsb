@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"strconv"
@@ -317,10 +318,9 @@ type ComposePostParams struct {
 	postType   model.PostType
 }
 
-func validateComposePostParams(w http.ResponseWriter, r *http.Request) *ComposePostParams {
+func validateComposePostParams(logger *slog.Logger, r *http.Request) (*ComposePostParams, error) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "error: "+err.Error(), http.StatusBadRequest)
-		return nil
+		return nil, err
 	}
 	var err error
 	params := ComposePostParams{
@@ -340,28 +340,29 @@ func validateComposePostParams(w http.ResponseWriter, r *http.Request) *ComposeP
 	if userIDstr != "" {
 		params.userID, err = strconv.ParseInt(userIDstr, 10, 64)
 		if err != nil {
-			http.Error(w, "invalid user_id", http.StatusBadRequest)
-			return nil
+			return nil, fmt.Errorf("invalid user_id")
 		}
 	}
 	if postTypeStr != "" {
 		postType, err := strconv.ParseInt(postTypeStr, 10, 64)
 		if err != nil {
-			http.Error(w, "invalid post_type. Available types: 0-POST, 1-REPOST, 2-REPLY, 3-DM", http.StatusBadRequest)
-			return nil
+			return nil, fmt.Errorf("invalid post_type. Available types: 0-POST, 1-REPOST, 2-REPLY, 3-DM")
 		}
 		params.postType = model.PostType(postType)
 	}
-	if mediaTypesStr != "" {
+	if mediaTypesStr != "" && mediaTypesStr != "[]" {
+		mediaTypesStr = strings.TrimPrefix(mediaTypesStr, "[")
+		mediaTypesStr = strings.TrimSuffix(mediaTypesStr, "]")
 		params.mediaTypes = strings.Split(mediaTypesStr, ",")
 	}
-	if mediaIDsStr != "" {
+	if mediaIDsStr != "" && mediaIDsStr != "[]"  {
+		mediaIDsStr = strings.TrimPrefix(mediaIDsStr, "[")
+		mediaIDsStr = strings.TrimSuffix(mediaIDsStr, "]")
 		mediaIDsStrSlice := strings.Split(mediaIDsStr, ",")
 		for _, idStr := range mediaIDsStrSlice {
 			id, err := strconv.ParseInt(idStr, 10, 64)
 			if err != nil {
-				http.Error(w, fmt.Sprintf("error parsing media ids: %s", err.Error()), http.StatusBadRequest)
-				return nil
+				return nil, fmt.Errorf(fmt.Sprintf("error parsing media ids: %s", err.Error()))
 			}
 			params.mediaIDs = append(params.mediaIDs, id)
 		}
@@ -369,23 +370,19 @@ func validateComposePostParams(w http.ResponseWriter, r *http.Request) *ComposeP
 
 	// validate mandatory fields
 	if params.username == "" {
-		http.Error(w, "must provide a valid username", http.StatusBadRequest)
-		return nil
+		return nil, fmt.Errorf("must provide a valid username")
 	}
 	if params.text == "" {
-		http.Error(w, "must provide a valid text", http.StatusBadRequest)
-		return nil
+		return nil, fmt.Errorf("must provide a valid text")
 	}
 	if params.userID == -1 {
-		http.Error(w, "must provide a user_id", http.StatusBadRequest)
-		return nil
+		return nil, fmt.Errorf("must provide a user_id")
 	}
 	if params.postType < 0 || params.postType > 3 {
-		http.Error(w, "invalid post_type. Available types: 0-POST, 1-REPOST, 2-REPLY, 3-DM", http.StatusBadRequest)
-		return nil
+		return nil, fmt.Errorf("invalid post_type. Available types: 0-POST, 1-REPOST, 2-REPLY, 3-DM")
 	}
 
-	return &params
+	return &params, nil
 }
 
 func (s *server) composePostHandler(w http.ResponseWriter, r *http.Request) {
@@ -393,8 +390,9 @@ func (s *server) composePostHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.Logger(ctx)
 	logger.Info("entering wkr2-api/post/compose")
 
-	params := validateComposePostParams(w, r)
-	if params == nil {
+	params, err := validateComposePostParams(logger, r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 

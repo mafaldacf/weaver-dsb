@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/ServiceWeaver/weaver"
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/dgrijalva/jwt-go"
-	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -56,15 +56,15 @@ type userService struct {
 	currentTimestamp   int64
 	secret             string
 	mongoClient        *mongo.Client
-	redisClient        *redis.Client
+	memCachedClient    *memcache.Client
 	mu                 sync.Mutex
 }
 
 type userServiceOptions struct {
-	MongoDBAddr 	string `toml:"mongodb_address"`
-	MongoDBPort 	int    `toml:"mongodb_port"`
-	MemCachedAddr 	string `toml:"memcached_addr"`
-	MemCachedPort 	int    `toml:"memcached_port"`
+	MongoDBAddr   string `toml:"mongodb_address"`
+	MongoDBPort   int    `toml:"mongodb_port"`
+	MemCachedAddr string `toml:"memcached_addr"`
+	MemCachedPort int    `toml:"memcached_port"`
 }
 
 func (u *userService) getCounter(timestamp int64) (int64, error) {
@@ -111,7 +111,7 @@ func (u *userService) Init(ctx context.Context) error {
 		return err
 	}
 
-	u.redisClient = storage.RedisClient(u.Config().MemCachedAddr, u.Config().MemCachedPort)
+	u.memCachedClient = storage.MemCachedClient(u.Config().MemCachedAddr, u.Config().MemCachedPort)
 	logger.Info("user service running!",
 		"mongodb_addr", u.Config().MongoDBAddr, "mongodb_port", u.Config().MongoDBPort,
 		"memcached_addr", u.Config().MemCachedAddr, "memcached_port", u.Config().MemCachedPort,
@@ -122,22 +122,22 @@ func (u *userService) Init(ctx context.Context) error {
 func (u *userService) Login(ctx context.Context, reqID int64, username string, password string) (string, error) {
 	logger := u.Logger(ctx)
 	timestamp := time.Now().UnixNano() / int64(time.Millisecond)
-	var login LoginInfo
-	result, err := u.redisClient.Get(ctx, username+":Login").Bytes()
-	if err != nil && err != redis.Nil {
+	var loginInfo LoginInfo
+	item, err := u.memCachedClient.Get(username + ":login")
+	if err != nil && err != memcache.ErrCacheMiss {
 		// error reading cache
-		logger.Error("error reading user login info from cache", "msg", err.Error(), "username", username)
+		logger.Error("error reading user login info from cache", "msg", err.Error())
 		return "", err
-	} else if err == nil {
-		// username found in cache
-		err := json.Unmarshal(result, &login)
+	}
+	if err == nil {
+		// user login info found in cache
+		err := json.Unmarshal(item.Value, &loginInfo)
 		if err != nil {
-			logger.Error("error parsing user from cache result", "msg", err.Error())
+			logger.Error("error parsing post from cache result", "msg", err.Error())
 			return "", err
 		}
-
 	} else {
-		// username does not exist in cache
+		// user login info not cached
 		// so we get it from db
 		user := model.User{
 			UserID: -1,
@@ -162,19 +162,19 @@ func (u *userService) Login(ctx context.Context, reqID int64, username string, p
 			logger.Error("error parsing user from mongodb result", "msg", err.Error())
 			return "", err
 		}
-		login.Password = user.PwdHashed
-		login.Salt = user.Salt
-		login.UserID = user.UserID
+		loginInfo.Password = user.PwdHashed
+		loginInfo.Salt = user.Salt
+		loginInfo.UserID = user.UserID
 	}
 	var tokenStr string
-	hashed_pwd := u.hashPwd([]byte(password + login.Salt))
-	if hashed_pwd != login.Password {
+	hashed_pwd := u.hashPwd([]byte(password + loginInfo.Salt))
+	if hashed_pwd != loginInfo.Password {
 		return "", fmt.Errorf("invalid credentials")
 	} else {
 		expiration_time := time.Now().Add(6 * time.Minute)
 		claims := &Claims{
 			Username:       username,
-			UserID:         strconv.FormatInt(login.UserID, 10),
+			UserID:         strconv.FormatInt(loginInfo.UserID, 10),
 			Timestamp:      timestamp,
 			StandardClaims: jwt.StandardClaims{ExpiresAt: expiration_time.Unix()},
 		}
@@ -185,8 +185,14 @@ func (u *userService) Login(ctx context.Context, reqID int64, username string, p
 			return "", fmt.Errorf("failed to create login token")
 		}
 	}
-	err = u.redisClient.Set(ctx, username+":Login", login, 0).Err()
+	loginInfoJson, err := json.Marshal(loginInfo)
 	if err != nil {
+		logger.Error("error converting login info to json", "login_info", loginInfo)
+		return "", err
+	}
+	err = u.memCachedClient.Set(&memcache.Item{Key: username + ":login", Value: loginInfoJson})
+	if err != nil {
+		logger.Error("error caching login info", "login_info", loginInfo)
 		return "", err
 	}
 	return tokenStr, nil
@@ -262,14 +268,22 @@ func (u *userService) UploadCreatorWithUserId(ctx context.Context, reqID int64, 
 func (u *userService) UploadCreatorWithUsername(ctx context.Context, reqID int64, username string) error {
 	logger := u.Logger(ctx)
 	logger.Debug("entering UploadCreatorWithUsername", "req_id", reqID, "username", username)
-	userID, err := u.redisClient.Get(ctx, username+":user_id").Int64()
 
-	if err != nil {
-		if err != redis.Nil {
-			// error reading cache
-			logger.Error("error reading creator info from cache", "msg", err.Error(), "username", username)
+	var userID int64
+	item, err := u.memCachedClient.Get(username + ":user_id")
+	if err != nil && err != memcache.ErrCacheMiss {
+		// error reading cache
+		logger.Error("error reading user id from cache", "msg", err.Error())
+		return err
+	}
+	if err == nil {
+		// user id info found in cache
+		err := json.Unmarshal(item.Value, &userID)
+		if err != nil {
+			logger.Error("error parsing user id from cache result", "msg", err.Error())
 			return err
 		}
+	} else {
 		// user not found in cache
 		// so we get it from db and write to cache
 		var user model.User
@@ -294,8 +308,14 @@ func (u *userService) UploadCreatorWithUsername(ctx context.Context, reqID int64
 			return err
 		}
 		userID = user.UserID
-		err = u.redisClient.Set(ctx, username+":user_id", userID, 0).Err()
+		userIDJson, err := json.Marshal(userID)
 		if err != nil {
+			logger.Error("error converting user ID to json", "userID", userID)
+			return err
+		}
+		err = u.memCachedClient.Set(&memcache.Item{Key: username + ":user_id", Value: userIDJson})
+		if err != nil {
+			logger.Error("error caching user id", "userID", userID)
 			return err
 		}
 	}
@@ -308,13 +328,21 @@ func (u *userService) GetUserId(ctx context.Context, reqID int64, username strin
 	logger := u.Logger(ctx)
 	logger.Debug("entering GetUserId", "req_id", reqID, "username", username)
 
-	userID, err := u.redisClient.Get(ctx, username+":user_id").Int64()
-	if err != nil {
-		if err != redis.Nil {
-			// error reading cache
-			logger.Error("error reading user id info from cache", "msg", err.Error(), "username", username)
+	var userID int64
+	item, err := u.memCachedClient.Get(username + ":user_id")
+	if err != nil && err != memcache.ErrCacheMiss {
+		// error reading cache
+		logger.Error("error reading user id from cache", "msg", err.Error())
+		return 0, err
+	}
+	if err == nil {
+		// user id info found in cache
+		err := json.Unmarshal(item.Value, &userID)
+		if err != nil {
+			logger.Error("error parsing user id from cache result", "msg", err.Error())
 			return 0, err
 		}
+	} else {
 		// user not found in cache
 		// so we get it from db and write to cache
 		user := model.User{
@@ -340,10 +368,15 @@ func (u *userService) GetUserId(ctx context.Context, reqID int64, username strin
 			logger.Error("error parsing user from mongodb result", "msg", err.Error())
 			return 0, err
 		}
-
 		userID = user.UserID
-		err = u.redisClient.Set(ctx, username+":user_id", userID, 0).Err()
+		userIDJson, err := json.Marshal(userID)
 		if err != nil {
+			logger.Error("error converting user ID to json", "userID", userID)
+			return 0, err
+		}
+		err = u.memCachedClient.Set(&memcache.Item{Key: username + ":user_id", Value: userIDJson})
+		if err != nil {
+			logger.Error("error caching user id", "userID", userID)
 			return 0, err
 		}
 	}

@@ -10,7 +10,7 @@ import (
 	"socialnetwork/pkg/storage"
 
 	"github.com/ServiceWeaver/weaver"
-	"github.com/redis/go-redis/v9"
+	"github.com/bradfitz/gomemcache/memcache"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -21,9 +21,9 @@ type UserMentionService interface {
 type userMentionService struct {
 	weaver.Implements[UserMentionService]
 	weaver.WithConfig[userMentionServiceOptions]
-	composePost weaver.Ref[ComposePostService]
-	mongoClient *mongo.Client
-	redisClient *redis.Client
+	composePost 	weaver.Ref[ComposePostService]
+	mongoClient 	*mongo.Client
+	memCachedClient *memcache.Client
 }
 
 type userMentionServiceOptions struct {
@@ -42,7 +42,7 @@ func (u *userMentionService) Init(ctx context.Context) error {
 		return err
 	}
 
-	u.redisClient = storage.RedisClient(u.Config().MemCachedAddr, u.Config().MemCachedPort)
+	u.memCachedClient = storage.MemCachedClient(u.Config().MemCachedAddr, u.Config().MemCachedPort)
 
 	logger.Info("user mention service running!",
 		"mongodb_addr", u.Config().MongoDBAddr, "mongodb_port", u.Config().MongoDBPort,
@@ -63,31 +63,29 @@ func (u *userMentionService) UploadUserMentions(ctx context.Context, reqID int64
 		keys = append(keys, name+":user_id")
 		revLookup[name+":user_id"] = name
 	}
-	values := make([]int64, len(keys))
-	var retvals []interface{}
-	for i := range values {
-		retvals = append(retvals, &values[i])
-	}
 
-	if len(keys) > 0 {
-		result, err := u.redisClient.MGet(ctx, keys...).Result()
-		if err != nil {
-			logger.Error("error reading keys from redis", "msg", err.Error())
-			return err
-		}
-		for i, data := range result {
-			err := json.Unmarshal([]byte(data.(string)), retvals[i])
+	result, err := u.memCachedClient.GetMulti(keys)
+	if err != nil {
+		logger.Error("error reading keys from redis", "msg", err.Error())
+		return err
+	}
+	userIDsCached := []int64{}
+	for _, key := range keys {
+		if val, ok := result[key]; ok {
+			var userID int64
+			err := json.Unmarshal(val.Value, &userID)
 			if err != nil {
-				logger.Error("error parsing result from redis", "msg", err.Error())
-				return err
+				logger.Error("error parsing ids from memcached result", "msg", err.Error())
+				return nil
 			}
+			userIDsCached = append(userIDsCached, userID)
 		}
 	}
 
 	var userMentions []model.UserMention
 	for i, key := range keys {
 		user_mention := model.UserMention{
-			UserID:   values[i],
+			UserID:   userIDsCached[i],
 			Username: revLookup[key],
 		}
 		userMentions = append(userMentions, user_mention)

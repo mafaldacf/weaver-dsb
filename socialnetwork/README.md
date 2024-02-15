@@ -79,9 +79,9 @@ weaver gke deploy config/weaver/weaver-us.toml
 ## Initializing Social Graph
 
 ```zsh
+source config.sh
 cd scripts
 pip install -r requirements.txt
-source config.sh
 python3 init_social_graph.py
 ```
 
@@ -124,6 +124,9 @@ cd wrk2
 ```zsh
 cd wrk2
 ./wrk -D exp -t <num-threads> -c <num-conns> -d <duration> -L -s ./scripts/social-network/sequence-compose-post-read-home-timeline.lua http://localhost:9000/wrk2-api/home-timeline/read -R <reqs-per-sec>
+
+# e.g.
+./wrk -D exp -t 1 -c 1 -d 1 -L -s ./scripts/social-network/sequence-compose-post-read-home-timeline.lua http://localhost:9000/wrk2-api/home-timeline/read -R 1
 ```
 
 ## Running Lua Scripts Manually
@@ -171,7 +174,7 @@ curl -X POST "localhost:9000/wrk2-api/user/unfollow" -d "user_id=1&followee_id=0
 curl -X POST "localhost:9000/wrk2-api/post/compose" -d "user_id=USER_ID&text=TEXT&username=USER_ID&post_type=POST_TYPE"
 
 # e.g.
-curl -X POST "localhost:9000/wrk2-api/post/compose" -d "user_id=0&text=helloworld_0&username=ana&post_type=0"
+curl -X POST "localhost:9000/wrk2-api/post/compose" -d "user_id=0&text=helloworld_0&username=ana&post_type=0&media_types=["png"]&media_ids=[0]"
 ```
 
 **Read User Timeline**: {user_id} [start, stop]
