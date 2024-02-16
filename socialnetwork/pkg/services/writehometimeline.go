@@ -10,6 +10,7 @@ import (
 
 	"socialnetwork/pkg/model"
 	"socialnetwork/pkg/storage"
+	sntrace "socialnetwork/pkg/trace"
 
 	"github.com/ServiceWeaver/weaver"
 	"github.com/ServiceWeaver/weaver/metrics"
@@ -21,26 +22,26 @@ import (
 )
 
 type WriteHomeTimelineService interface {
-	// WriteHomeTimelineService service does not expose any rpc methods
+	WriteHomeTimeline(ctx context.Context, msg model.Message) error
 }
 
 type writeHomeTimelineServiceOptions struct {
-	RabbitMQAddr     string `toml:"rabbitmq_address"`
-	RabbitMQPort     int    `toml:"rabbitmq_port"`
-	MongoDBAddr      string `toml:"mongodb_address"`
-	MongoDBPort      int    `toml:"mongodb_port"`
-	RedisAddr   	 string `toml:"redis_address"`
-	RedisPort   	 int    `toml:"redis_port"`
-	NumWorkers       int    `toml:"num_workers"`
-	Region           string `toml:"region"`
+	RabbitMQAddr string `toml:"rabbitmq_address"`
+	RabbitMQPort int    `toml:"rabbitmq_port"`
+	MongoDBAddr  string `toml:"mongodb_address"`
+	MongoDBPort  int    `toml:"mongodb_port"`
+	RedisAddr    string `toml:"redis_address"`
+	RedisPort    int    `toml:"redis_port"`
+	NumWorkers   int    `toml:"num_workers"`
+	Region       string `toml:"region"`
 }
 
 type writeHomeTimelineService struct {
 	weaver.Implements[WriteHomeTimelineService]
 	weaver.WithConfig[writeHomeTimelineServiceOptions]
-	socialGraphService 	weaver.Ref[SocialGraphService]
-	mongoClient 		*mongo.Client
-	redisClient 		*redis.Client
+	socialGraphService weaver.Ref[SocialGraphService]
+	mongoClient        *mongo.Client
+	redisClient        *redis.Client
 }
 
 var (
@@ -68,30 +69,25 @@ func (w *writeHomeTimelineService) Init(ctx context.Context) error {
 			defer wg.Done()
 			err := w.workerThread(ctx)
 			logger.Error("error in worker thread", "msg", err.Error())
-			}()
-		}
+		}()
+	}
 
-	logger.Info("write home timeline service running!", "region", w.Config().Region, "n_workers", w.Config().NumWorkers, 
-		"rabbitmq_addr", w.Config().RabbitMQAddr, "rabbitmq_port", w.Config().RabbitMQPort, 
-		"mongodb_addr", w.Config().MongoDBAddr, "mongodb_port", w.Config().MongoDBPort, 
+	logger.Info("write home timeline service running!", "region", w.Config().Region, "n_workers", w.Config().NumWorkers,
+		"rabbitmq_addr", w.Config().RabbitMQAddr, "rabbitmq_port", w.Config().RabbitMQPort,
+		"mongodb_addr", w.Config().MongoDBAddr, "mongodb_port", w.Config().MongoDBPort,
 		"redis_addr", w.Config().RedisAddr, "redis_port", w.Config().RedisPort,
 	)
 	wg.Wait()
 	return nil
 }
 
-// onReceivedWorker adds the post to all the post's subscribed users (followers, mentioned users, etc)
-func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []byte) error {
+func (w *writeHomeTimelineService) WriteHomeTimeline(ctx context.Context, msg model.Message) error {
 	logger := w.Logger(ctx)
 
-	var msg model.Message
-	err := json.Unmarshal(body, &msg)
-	if err != nil {
-		logger.Error("error parsing json message", "msg", err.Error())
-		return err
+	span := trace.SpanFromContext(ctx)
+	if trace.SpanContextFromContext(ctx).IsValid() {
+		logger.Debug("valid span", "s", span.IsRecording())
 	}
-
-	logger.Debug("received rabbitmq message", "post_id", msg.PostID)
 
 	trace.SpanFromContext(ctx).SetAttributes(
 		attribute.Int64("wht_read_notification_ts", time.Now().UnixMilli()),
@@ -102,7 +98,7 @@ func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []
 
 	var post model.Post
 	filter := bson.D{{Key: "post_id", Value: msg.PostID}}
-	err = collection.FindOne(ctx, filter, nil).Decode(&post)
+	err := collection.FindOne(ctx, filter, nil).Decode(&post)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			trace.SpanFromContext(ctx).SetAttributes(
@@ -116,6 +112,7 @@ func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []
 			return err
 		}
 	}
+
 	trace.SpanFromContext(ctx).SetAttributes(
 		attribute.Bool("poststorage_consistent_read", true),
 	)
@@ -136,9 +133,9 @@ func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []
 	for _, userMentionID := range msg.UserMentionIDs {
 		uniqueIDs[userMentionID] = true
 	}
-	value := redis.Z {
+	value := redis.Z{
 		Member: msg.PostID,
-		Score: float64(msg.Timestamp),
+		Score:  float64(msg.Timestamp),
 	}
 	_, err = w.redisClient.Pipelined(ctx, func(pipe redis.Pipeliner) error {
 		for id := range uniqueIDs {
@@ -152,6 +149,36 @@ func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []
 	})
 	logger.Debug("leaving write home timeline")
 	return nil
+}
+
+// onReceivedWorker adds the post to all the post's subscribed users (followers, mentioned users, etc)
+func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []byte) error {
+	logger := w.Logger(ctx)
+
+	var msg model.Message
+	err := json.Unmarshal(body, &msg)
+	if err != nil {
+		logger.Error("error parsing json message", "msg", err.Error())
+		return err
+	}
+	logger.Debug("received rabbitmq message", "post_id", msg.PostID, "msg", msg)
+
+	spanContext, err := sntrace.ParseSpanContext(msg.SpanContext)
+	if err != nil {
+		logger.Error("error parsing span context", "msg", err.Error())
+		return err
+	}
+
+	ctx = trace.ContextWithRemoteSpanContext(ctx, spanContext)
+
+	/* span := trace.SpanFromContext(ctx)
+	ctx, span = s.tracer.Start(ctx, "services.WriteHomeTimelineService.WriteHomeTimeline", trace.WithSpanKind(trace.SpanKindInternal))
+	defer func() {
+		span.End()
+	}() */
+
+
+	return w.WriteHomeTimeline(ctx, msg)
 }
 
 func (w *writeHomeTimelineService) workerThread(ctx context.Context) error {

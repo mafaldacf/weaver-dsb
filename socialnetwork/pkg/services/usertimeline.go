@@ -49,29 +49,6 @@ func (u *userTimelineService) Init(ctx context.Context) error {
 	return nil
 }
 
-// FIXME: panic: runtime error: hash of unhashable type bsonrw.TransitionError [recovered]
-/* func (u *userTimelineService) WriteUserTimeline(ctx context.Context, reqID int64, postID int64, userID int64, timestamp int64) error {
-	logger := u.Logger(ctx)
-	logger.Debug("entering WriteUserTimeline", "req_id", reqID, "post_id", postID, "user_id", userID, "timestamp", timestamp)
-
-	collection := u.mongoClient.Database("user-timeline").Collection("user-timeline")
-
-	userIDStr := strconv.FormatInt(userID, 10)
-	postIDstr := strconv.FormatInt(postID, 10)
-	timestampstr := strconv.FormatInt(timestamp, 10)
-	filter := bson.M{"user_id": userIDStr}
-	update := fmt.Sprintf(`{"$push": {"posts": {"$each": [{"post_id": %s, "timestamp": %s}], "$position": 0}}}`, postIDstr, timestampstr)
-
-	_, err := collection.UpdateMany(ctx, filter, update, &options.UpdateOptions {
-		// a new document is inserted if filter does not match any doc
-		Upsert: utils.BoolToPtr(false),
-	})
-	if err != nil {
-		logger.Error("error updating user timeline", "msg", err.Error())
-		return err
-	}
-	return nil
-} */
 
 // WriteUserTimeline adds the post to the user (the post's writer) timeline
 func (u *userTimelineService) WriteUserTimeline(ctx context.Context, reqID int64, postID int64, userID int64, timestamp int64) error {

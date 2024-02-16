@@ -10,6 +10,7 @@ import (
 
 	"socialnetwork/pkg/model"
 	"socialnetwork/pkg/storage"
+	sntrace "socialnetwork/pkg/trace"
 
 	"github.com/ServiceWeaver/weaver"
 	"github.com/ServiceWeaver/weaver/metrics"
@@ -24,7 +25,7 @@ type ComposePostService interface {
 	UploadText(ctx context.Context, reqID int64, text string) error
 	UploadMedia(ctx context.Context, reqID int64, medias []model.Media) error
 	UploadUniqueId(ctx context.Context, reqID int64, postID int64, postType model.PostType) error
-	UploadUrls(ctx context.Context, reqID int64, urls []model.URL) error 
+	UploadUrls(ctx context.Context, reqID int64, urls []model.URL) error
 	UploadUserMentions(ctx context.Context, reqID int64, userMentions []model.UserMention) error
 }
 
@@ -34,21 +35,21 @@ const REDIS_EXPIRE_TIME int = 12
 type composePostService struct {
 	weaver.Implements[ComposePostService]
 	weaver.WithConfig[composePostServiceOptions]
-	postStorageService   	weaver.Ref[PostStorageService]
-	userTimelineService  	weaver.Ref[UserTimelineService]
-	_             			weaver.Ref[WriteHomeTimelineService]
-	amqChannel    			*amqp.Channel
-	amqConnection 			*amqp.Connection
-	redisClient   			*redis.Client
+	postStorageService  weaver.Ref[PostStorageService]
+	userTimelineService weaver.Ref[UserTimelineService]
+	_                   weaver.Ref[WriteHomeTimelineService]
+	amqChannel          *amqp.Channel
+	amqConnection       *amqp.Connection
+	redisClient         *redis.Client
 }
 
 type composePostServiceOptions struct {
-	RabbitMQAddr     string   `toml:"rabbitmq_address"`
-	RabbitMQPort     int      `toml:"rabbitmq_port"`
-	RedisAddr        string   `toml:"redis_address"`
-	RedisPort        int      `toml:"redis_port"`
-	Region           string   `toml:"region"`
-	Regions          []string `toml:"regions"`
+	RabbitMQAddr string   `toml:"rabbitmq_address"`
+	RabbitMQPort int      `toml:"rabbitmq_port"`
+	RedisAddr    string   `toml:"redis_address"`
+	RedisPort    int      `toml:"redis_port"`
+	Region       string   `toml:"region"`
+	Regions      []string `toml:"regions"`
 }
 
 var (
@@ -69,8 +70,8 @@ func (c *composePostService) Init(ctx context.Context) error {
 
 	c.redisClient = storage.RedisClient(c.Config().RedisAddr, c.Config().RedisPort)
 
-	logger.Info("compose post service running!", "region", c.Config().Region, "regions", c.Config().Regions, 
-		"rabbitmq_addr", c.Config().RabbitMQAddr, "rabbitmq_port", c.Config().RabbitMQPort, 
+	logger.Info("compose post service running!", "region", c.Config().Region, "regions", c.Config().Regions,
+		"rabbitmq_addr", c.Config().RabbitMQAddr, "rabbitmq_port", c.Config().RabbitMQPort,
 		"redis_addr", c.Config().RedisAddr, "redis_port", c.Config().RedisPort,
 	)
 	return nil
@@ -88,7 +89,7 @@ func (c *composePostService) uploadComponent(ctx context.Context, reqID int64, f
 		if err != nil {
 			return err
 		}
-		err = pipe.Expire(ctx, reqIDStr, time.Second * time.Duration(REDIS_EXPIRE_TIME)).Err()
+		err = pipe.Expire(ctx, reqIDStr, time.Second*time.Duration(REDIS_EXPIRE_TIME)).Err()
 		if err != nil {
 			return err
 		}
@@ -124,7 +125,6 @@ func (c *composePostService) UploadText(ctx context.Context, reqID int64, text s
 	return c.uploadComponent(ctx, reqID, "text", textJSON)
 }
 
-
 func (c *composePostService) UploadMedia(ctx context.Context, reqID int64, medias []model.Media) error {
 	logger := c.Logger(ctx)
 	logger.Debug("entering UploadMedia", "medias", medias)
@@ -135,7 +135,6 @@ func (c *composePostService) UploadMedia(ctx context.Context, reqID int64, media
 	}
 	return c.uploadComponent(ctx, reqID, "media", mediasJSON)
 }
-
 
 func (c *composePostService) UploadUniqueId(ctx context.Context, reqID int64, postID int64, postType model.PostType) error {
 	logger := c.Logger(ctx)
@@ -152,7 +151,6 @@ func (c *composePostService) UploadUniqueId(ctx context.Context, reqID int64, po
 	}
 	return c.uploadComponent(ctx, reqID, "post_id", postIDJSON, "post_type", postTypeJSON)
 }
-
 
 func (c *composePostService) UploadUrls(ctx context.Context, reqID int64, urls []model.URL) error {
 	logger := c.Logger(ctx)
@@ -257,16 +255,16 @@ func (c *composePostService) composeAndUpload(ctx context.Context, reqID int64) 
 
 	logger.Debug("parsing post data")
 	timestamp := time.Now().UnixMilli()
-	post := model.Post {
-		PostID: 		postID,
-		ReqID: 			reqID,
-		Creator:    	creator,
-		Text: 			text,
-		UserMentions: 	userMentions,
-		Media: 			medias,
-		URLs: 			urls,
-		Timestamp: 		timestamp,
-		PostType: 		postType,
+	post := model.Post{
+		PostID:       postID,
+		ReqID:        reqID,
+		Creator:      creator,
+		Text:         text,
+		UserMentions: userMentions,
+		Media:        medias,
+		URLs:         urls,
+		Timestamp:    timestamp,
+		PostType:     postType,
 	}
 	var userMentionIDs []int64
 	for _, mention := range userMentions {
@@ -287,7 +285,6 @@ func (c *composePostService) composeAndUpload(ctx context.Context, reqID int64) 
 	trace.SpanFromContext(ctx).SetAttributes(
 		attribute.Int64("ts", timestamp),
 		attribute.Int64("post_id", postID),
-		attribute.Int64("composepost_write_notification_ts", time.Now().UnixMilli()),
 	)
 
 	// --- Write Home Timeline
@@ -310,25 +307,43 @@ func (c *composePostService) uploadHomeTimelineHelper(ctx context.Context, reqID
 		return err
 	}
 
-	msgJSON, err := json.Marshal(model.Message{
-		ReqID: reqID,
-		PostID: postID,
-		UserID: userID,
-		Timestamp: timestamp,
+	spanContext := trace.SpanContextFromContext(ctx)
+	msg := model.Message{
+		ReqID:          reqID,
+		PostID:         postID,
+		UserID:         userID,
+		Timestamp:      timestamp,
 		UserMentionIDs: userMentionIDs,
-	})
+		SpanContext:    sntrace.BuildSpanContext(spanContext),
+	}
+
+	trace.SpanFromContext(ctx).SetAttributes(
+		attribute.Int64("composepost_write_notification_ts", time.Now().UnixMilli()),
+	)
+
+	msgJSON, err := json.Marshal(msg)
 	if err != nil {
 		logger.Error("error converting rabbitmq message to json", "msg", err.Error())
 		return err
 	}
 
-	msg := amqp.Publishing{
+	span := trace.SpanFromContext(ctx)
+	if trace.SpanContextFromContext(ctx).IsValid() {
+		logger.Debug("valid span", "s", span.IsRecording())
+	}
+
+	amqMsg := amqp.Publishing{
 		ContentType: "application/json",
 		Body:        []byte(msgJSON),
 	}
 	for _, region := range c.Config().Regions {
 		routingKey := fmt.Sprintf("write-home-timeline-%s", region)
-		c.amqChannel.PublishWithContext(ctx, "write-home-timeline", routingKey, false, false, msg)
+		c.amqChannel.PublishWithContext(ctx, "write-home-timeline", routingKey, false, false, amqMsg)
+	}
+
+	span = trace.SpanFromContext(ctx)
+	if trace.SpanContextFromContext(ctx).IsValid() {
+		logger.Debug("valid span", "s", span.IsRecording())
 	}
 	return nil
 }
