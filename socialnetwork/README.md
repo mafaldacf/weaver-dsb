@@ -28,6 +28,37 @@ For more information: https://developers.google.com/workspace/guides/create-cred
 
 ## Deployment
 
+### Running in GKE
+
+Deploy datastores in GCP machines using Terraform:
+
+``` zsh
+./manager storage-deploy
+./manager storage-start
+# fetch status from docker swarm and generate app weaver config `weaver-gcp.toml` (IMPORTANT for next step!!)
+./manager storage-info
+```
+
+Deploy application using GKE:
+
+``` zsh
+go build
+weaver gke deploy config/weaver/weaver-gcp.toml
+```
+
+Run benchmark in GKE:
+
+``` zsh
+TODO
+```
+
+Clean at the end:
+
+``` zsh
+./manager storage-end
+```
+
+
 ### Running Locally with Weaver in Single Process
 
 Deploy datastores:
@@ -59,36 +90,7 @@ go build
 weaver multi deploy weaver.toml
 ```
 
-### Running in GKE
-
-Deploy datastores in GCP machines using Terraform:
-
-``` zsh
-./manager deploy
-```
-
-Deploy application using GKE:
-
-``` zsh
-go build
-weaver gke deploy config/weaver/weaver-eu.toml
-weaver gke deploy config/weaver/weaver-us.toml
-```
-
-Run benchmark in GKE:
-
-``` zsh
-./manager run
-./manager info
-```
-
-Clean at the end:
-
-``` zsh
-./manager clean
-```
-
-## Initializing Social Graph
+#### Initializing Social Graph
 
 ```zsh
 source config.sh
@@ -97,9 +99,9 @@ pip install -r requirements.txt
 python3 init_social_graph.py
 ```
 
-## Running HTTP Workload Generator
+#### Running HTTP Workload Generator
 
-### Make
+Make:
 
 ```zsh
 cd wrk2
@@ -107,7 +109,7 @@ chmod +x deps/luajit/src/luajit
 make
 ```
 
-### Compose Posts
+Compose Posts
 
 ```zsh
 cd wrk2
@@ -117,21 +119,21 @@ cd wrk2
 ./wrk -D exp -t 1 -c 1 -d 1 -L -s ./scripts/social-network/compose-post.lua http://localhost:9000/wrk2-api/post/compose -R 1
 ```
 
-### Read Home Timelines
+Read Home Timelines
 
 ```zsh
 cd wrk2
 ./wrk -D exp -t <num-threads> -c <num-conns> -d <duration> -L -s ./scripts/social-network/read-home-timeline.lua http://localhost:9000/wrk2-api/home-timeline/read -R <reqs-per-sec>
 ```
 
-### Read User Timelines
+Read User Timelines
 
 ```zsh
 cd wrk2
 ./wrk -D exp -t <num-threads> -c <num-conns> -d <duration> -L -s ./scripts/social-network/read-user-timeline.lua http://localhost:9000/wrk2-api/user-timeline/read -R <reqs-per-sec>
 ```
 
-### Sequence Compose Post >> Read Home Timelines
+Sequence Compose Post >> Read Home Timelines
 
 ```zsh
 cd wrk2
@@ -141,13 +143,7 @@ cd wrk2
 ./wrk -D exp -t 1 -c 1 -d 1 -L -s ./scripts/social-network/sequence-compose-post-read-home-timeline.lua http://localhost:9000/wrk2-api/home-timeline/read -R 1
 ```
 
-## Running Lua Scripts Manually
-
-```zsh
-lua ./scripts/social-network/sequence-compose-post-read-home-timeline.lua
-```
-
-## Manual HTTP Requests
+#### Manual HTTP Requests
 
 **Register User**: {username, first_name, last_name, password} [user_id]
 

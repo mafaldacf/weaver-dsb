@@ -5,11 +5,17 @@ from google.oauth2 import service_account
 import time
 import sys
 from plumbum import FG
-from plumbum.cmd import gcloud, terraform
 import requests
 from bs4 import BeautifulSoup
 import re
+import toml
 
+# -----------
+# GCP profile
+# -----------
+GCP_PROJECT_ID = "weaver-411410"
+GCP_USERNAME = "mafaldacf"
+GCP_CLOUD_STORAGE_BUCKET_NAME = "weaver-411410_cloudbuild"
 # -----------------
 # GCP configuration
 # -----------------
@@ -23,9 +29,7 @@ INSTANCE_NAME_US = "weaver-dsb-db-us"
 ZONE_MANAGER = "europe-west3-a"
 ZONE_EU = "europe-west3-a"
 ZONE_US = "us-central1-a"
-PROJECT_ID = "weaver-411410"
-USERNAME = "mafaldacf"
-SSH_KEY_PATH = f"/home/{USERNAME}/.ssh/google_compute_engine"
+SSH_KEY_PATH = f"/home/{GCP_USERNAME}/.ssh/google_compute_engine"
 CREDENTIALS_PATH = "gcp/credentials.json"
 
 INSTANCES = [ # name, zone
@@ -80,12 +84,14 @@ def gather_metrics(addr):
 # --------------------
 
 def get_instance_ips(instance_name, zone):
-  instance = compute.instances().get(project=PROJECT_ID, zone=zone, instance=instance_name).execute()
+  instance = compute.instances().get(project=GCP_PROJECT_ID, zone=zone, instance=instance_name).execute()
   network_interface = instance['networkInterfaces'][0]
   # public, private
   return network_interface['accessConfigs'][0]['natIP'], network_interface['networkIP']
 
-def run():
+def storage_start():
+  from plumbum.cmd import gcloud
+
   # get public ip for each instance
   public_ip_manager, _ = get_instance_ips(INSTANCE_NAME_MANAGER, ZONE_MANAGER)
   public_ip_eu, _ = get_instance_ips(INSTANCE_NAME_EU, ZONE_EU)
@@ -118,46 +124,105 @@ def run():
   cmd = f'sudo docker stack deploy --with-registry-auth --compose-file ~/weaver-dsb-socialnetwork/docker-compose.yml socialnetwork'
   gcloud['compute', 'ssh', INSTANCE_NAME_MANAGER, '--command', cmd] & FG
 
-def info():
+def storage_info():
+  from plumbum.cmd import gcloud
+  cmd = f'sudo docker node ls'
+  gcloud['compute', 'ssh', INSTANCE_NAME_MANAGER, '--command', cmd] & FG
   cmd = f'sudo docker service ls'
   gcloud['compute', 'ssh', INSTANCE_NAME_MANAGER, '--command', cmd] & FG
 
-def deploy():
+  print()
+  public_ip_manager, _ = get_instance_ips(INSTANCE_NAME_MANAGER, ZONE_MANAGER)
+  print("storage manager running at @", public_ip_manager)
+  public_ip_eu, _ = get_instance_ips(INSTANCE_NAME_EU, ZONE_EU)
+  print(f"storage in {ZONE_EU} running at @", public_ip_eu)
+  public_ip_us, _ = get_instance_ips(INSTANCE_NAME_US, ZONE_US)
+  print(f"storage in {ZONE_US} running at @", public_ip_us)
+  print()
+
+  gen_weaver_config(public_ip_eu, public_ip_us)
+
+def gen_weaver_config(public_ip_eu = "0.0.0.0", public_ip_us = "0.0.0.0"):
+  data = toml.load("weaver.toml")
+
+  for _, config in data.items():
+    for entry, values in config.items():
+      if entry in ['mongodb_address', 'redis_address', 'rabbitmq_address', 'memcached_address']:
+        values["europe-west3"] = public_ip_eu
+        values["us-central-1"] = public_ip_us
+
+  f = open("weaver-gcp.toml",'w')
+  toml.dump(data, f)
+  f.close()
+  print("[INFO] generated app config at weaver-gcp.toml")
+
+def storage_deploy():
+  from plumbum.cmd import terraform, mkdir, cp, gsutil, rm
+
+  mkdir['weaver-dsb-socialnetwork'] & FG
+  cp['-r', 'docker-compose.yml', 'docker', 'config', 'weaver-dsb-socialnetwork'] & FG
+  gsutil['cp', '-r', 'weaver-dsb-socialnetwork', f'gs://{GCP_CLOUD_STORAGE_BUCKET_NAME}/'] & FG
+  rm['-r', 'weaver-dsb-socialnetwork'] & FG
+
   terraform['-chdir=./terraform', 'init'] & FG
   terraform['-chdir=./terraform', 'apply'] & FG
-  # wait 30 seconds to install dependencies in all gpc instances
-  print("[INFO] waiting 90 seconds to install all dependencies in GCP instances...")
-  time.sleep(90)
+
+  print("[INFO] waiting 120 seconds to install all dependencies in GCP instances...")
+  time.sleep(120)
   
-def clean():
+def storage_clean():
+  from plumbum.cmd import terraform
   terraform['-chdir=./terraform', 'destroy'] & FG
 
 def metrics():
+  #FIXME
+  #from plumbum.cmd import weaver
+  #weaver['multi', 'status'] & FG
+
+
+  num_composed_posts, num_inconsistencies, pc_inconsistencies = gather_metrics("localhost")
+  print("# composed posts:\t", num_composed_posts)
+  print("# inconsistencies:\t", num_inconsistencies)
+  print("% inconsistencies:\t", pc_inconsistencies)
+
+def wkr2():
   pass
 
 # --------------------
 # LOCAL
 # --------------------
 
-def local_deploy():
+def local_storage_deploy():
   pass
 
-def local_run():
+def local_storage_start():
   pass
 
 def local_metrics():
-  num_composed_posts, num_inconsistencies, pc_inconsistencies = gather_metrics("127.0.0.1")
+  num_composed_posts, num_inconsistencies, pc_inconsistencies = gather_metrics("localhost")
   print("# composed posts:\t", num_composed_posts)
   print("# inconsistencies:\t", num_inconsistencies)
   print("% inconsistencies:\t", pc_inconsistencies)
 
-def local_clean():
+def local_storage_clean():
   pass
 
 if __name__ == "__main__":
   main_parser = argparse.ArgumentParser()
   command_parser = main_parser.add_subparsers(help='commands', dest='command')
-  commands = ['deploy', 'run', 'metrics', 'info', 'clean', 'local-deploy', 'local-run', 'local-metrics', 'local-clean']
+
+  commands = [
+    # ----------------
+    # gcp datastores
+    'storage-deploy', 'storage-start', 'storage-info', 'storage-clean', 
+    # gcp app
+    'wrk2', 'metrics',
+    # ----------------
+    # local datastores
+    'local-storage-deploy', 'local-storage-start', 'local-storage-clean'
+    # local app
+    'local-wrk2', 'local-metrics',
+  ]
   for cmd in commands:
       command_parser.add_parser(cmd)
   args = vars(main_parser.parse_args())

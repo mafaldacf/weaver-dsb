@@ -15,3 +15,6 @@ socialnetwork/wrk2/deps/luajit/src/host/buildvm
 socialnetwork/wrk2/deps/luajit/src/host/minilua
 socialnetwork/wrk2/deps/luajit/src/libluajit.a
 socialnetwork/wrk2/deps/luajit/src/luajit
+
+socialnetwork/terraform/.terraform.tfstate.lock.info
+socialnetwork/weaver-gcp.toml

@@ -9,6 +9,9 @@ import (
 	"strings"
 )
 
+// const DEFAULT_REGION = "europe-west3"
+const DEFAULT_REGION = "local"
+
 func BoolToPtr(v bool) *bool {
 	b := true
 	return &b
@@ -51,7 +54,7 @@ func Region() (string, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		// can only send requests inside machine, otherwise we are in localhost
-		return "local", nil
+		return DEFAULT_REGION, nil
 	}
 	defer resp.Body.Close()
 
