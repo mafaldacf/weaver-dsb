@@ -22,7 +22,7 @@ sudo luarocks install penlight
 
 ## Configuration
 
-Place your GCP credentials JSON file (e.g. using Service Account as authentication method) in `weaver-dsb/socialnetwork/gcp`
+Place your `GCP credentials JSON file` (e.g. using Service Account as authentication method) in `weaver-dsb/socialnetwork/gcp`
 
 For more information: https://developers.google.com/workspace/guides/create-credentials
 
@@ -61,11 +61,10 @@ weaver multi deploy weaver.toml
 
 ### Running in GKE
 
-Deploy datastores in GCP machines:
+Deploy datastores in GCP machines using Terraform:
 
 ``` zsh
-./manager terraform-deploy
-./manager run
+./manager deploy
 ```
 
 Deploy application using GKE:
@@ -74,6 +73,19 @@ Deploy application using GKE:
 go build
 weaver gke deploy config/weaver/weaver-eu.toml
 weaver gke deploy config/weaver/weaver-us.toml
+```
+
+Run benchmark in GKE:
+
+``` zsh
+./manager run
+./manager info
+```
+
+Clean at the end:
+
+``` zsh
+./manager clean
 ```
 
 ## Initializing Social Graph
@@ -175,6 +187,7 @@ curl -X POST "localhost:9000/wrk2-api/post/compose" -d "user_id=USER_ID&text=TEX
 
 # e.g.
 curl -X POST "localhost:9000/wrk2-api/post/compose" -d "user_id=0&text=helloworld_0&username=ana&post_type=0&media_types=["png"]&media_ids=[0]"
+curl -X POST "localhost:9000/wrk2-api/post/compose" -d "user_id=1&text=helloworld_0&username=username_1&post_type=0&media_types=["png"]&media_ids=[0]"
 ```
 
 **Read User Timeline**: {user_id} [start, stop]
@@ -184,6 +197,7 @@ curl "localhost:9000/wrk2-api/user-timeline/read" -d "user_id=USER_ID"
 
 # e.g.
 curl "localhost:9000/wrk2-api/user-timeline/read" -d "user_id=0"
+curl "localhost:9000/wrk2-api/user-timeline/read" -d "user_id=1"
 ```
 
 **Read Home Timeline**: {user_id} [start, stop]
@@ -193,4 +207,5 @@ curl "localhost:9000/wrk2-api/home-timeline/read" -d "user_id=USER_ID"
 
 # e.g.
 curl "localhost:9000/wrk2-api/home-timeline/read" -d "user_id=1"
+curl "localhost:9000/wrk2-api/home-timeline/read" -d "user_id=88"
 ```

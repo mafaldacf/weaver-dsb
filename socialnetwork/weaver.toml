@@ -1,0 +1,79 @@
+# --------
+# Services
+# --------
+
+["socialnetwork/pkg/services/ComposePostService"]
+redis_address       =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
+rabbitmq_address    =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
+redis_port          = 6381
+rabbitmq_port       = 5673
+regions             = ["europe-west3", "us-central1"]
+
+["socialnetwork/pkg/services/HomeTimelineService"]
+redis_address       =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
+redis_port          = 6382
+
+["socialnetwork/pkg/services/PostStorageService"]
+mongodb_address     =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
+memcached_address      =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
+mongodb_port        = 27017
+memcached_port      = 11212
+
+["socialnetwork/pkg/services/SocialGraphService"]
+mongodb_address     =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
+redis_address       =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
+mongodb_port        = 27017
+redis_port          = 6384
+
+["socialnetwork/pkg/services/UrlShortenService"]
+mongodb_address     =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
+memcached_address   =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
+mongodb_port        = 27017
+memcached_port      = 11213
+
+["socialnetwork/pkg/services/UserService"]
+mongodb_address     =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
+memcached_address    =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
+mongodb_port        = 27017
+memcached_port      = 11214
+
+["socialnetwork/pkg/services/UserMentionService"]
+# uses UserService cache (memcached)
+mongodb_address     =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
+memcached_address   =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
+mongodb_port        = 27017
+memcached_port      = 11214
+
+["socialnetwork/pkg/services/UserTimelineService"]
+mongodb_address     =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
+redis_address       =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
+mongodb_port        = 27017
+redis_port          = 6383
+
+["socialnetwork/pkg/services/WriteHomeTimelineService"]
+# uses HomeTimelineService cache (redis)
+rabbitmq_address    =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
+mongodb_address     =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
+redis_address       =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
+rabbitmq_port       = 5672
+mongodb_port        = 27017
+redis_port          = 6382
+num_workers         = 4
+
+# ----------
+# Deployment
+# ----------
+
+[single]
+listeners.wrk2 = {address = "127.0.0.1:9000"}
+
+[multi]
+listeners.wrk2 = {address = "127.0.0.1:9000"}
+
+[serviceweaver]
+binary = "./socialnetwork"
+name = "weaver-dsb-db-eu"
+
+[gke]
+regions = ["europe-west3", "us-central1"]
+listeners.wrk2 = {public_hostname = "weaver.dsb.socialnetwork"}

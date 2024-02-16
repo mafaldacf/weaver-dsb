@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"socialnetwork/pkg/storage"
+	"socialnetwork/pkg/utils"
 
 	"github.com/ServiceWeaver/weaver"
 	"github.com/redis/go-redis/v9"
@@ -33,10 +34,11 @@ type socialGraphService struct {
 }
 
 type socialGraphServiceOptions struct {
-	MongoDBAddr string `toml:"mongodb_address"`
-	MongoDBPort int    `toml:"mongodb_port"`
-	RedisAddr   string `toml:"redis_address"`
-	RedisPort   int    `toml:"redis_port"`
+	MongoDBAddr map[string]string 	`toml:"mongodb_address"`
+	RedisAddr   map[string]string 	`toml:"redis_address"`
+	MongoDBPort int    				`toml:"mongodb_port"`
+	RedisPort   int    				`toml:"redis_port"`
+	Region 	 	string
 }
 
 type FollowerInfo struct {
@@ -57,18 +59,25 @@ type UserInfo struct {
 
 func (s *socialGraphService) Init(ctx context.Context) error {
 	logger := s.Logger(ctx)
-	var err error
-	s.mongoClient, err = storage.MongoDBClient(ctx, s.Config().MongoDBAddr, s.Config().MongoDBPort)
+
+	region, err := utils.Region()
+	if err != nil {
+		logger.Error(err.Error())
+		return err
+	}
+	s.Config().Region = region
+
+	s.mongoClient, err = storage.MongoDBClient(ctx, s.Config().MongoDBAddr[region], s.Config().MongoDBPort)
 	if err != nil {
 		logger.Error(err.Error())
 		return err
 	}
 
-	s.redisClient = storage.RedisClient(s.Config().RedisAddr, s.Config().RedisPort)
+	s.redisClient = storage.RedisClient(s.Config().RedisAddr[region], s.Config().RedisPort)
 
-	logger.Info("social graph service running!",
-		"mongodb_addr", s.Config().MongoDBAddr, "mongodb_port", s.Config().MongoDBPort,
-		"redis_addr", s.Config().RedisAddr, "redis_port", s.Config().RedisPort,
+	logger.Info("social graph service running!", "region", s.Config().Region,
+		"mongodb_addr", s.Config().MongoDBAddr[region], "mongodb_port", s.Config().MongoDBPort,
+		"redis_addr", s.Config().RedisAddr[region], "redis_port", s.Config().RedisPort,
 	)
 	return nil
 }

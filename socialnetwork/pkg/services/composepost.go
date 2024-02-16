@@ -11,6 +11,7 @@ import (
 	"socialnetwork/pkg/model"
 	"socialnetwork/pkg/storage"
 	sntrace "socialnetwork/pkg/trace"
+	"socialnetwork/pkg/utils"
 
 	"github.com/ServiceWeaver/weaver"
 	"github.com/ServiceWeaver/weaver/metrics"
@@ -44,12 +45,12 @@ type composePostService struct {
 }
 
 type composePostServiceOptions struct {
-	RabbitMQAddr string   `toml:"rabbitmq_address"`
-	RabbitMQPort int      `toml:"rabbitmq_port"`
-	RedisAddr    string   `toml:"redis_address"`
-	RedisPort    int      `toml:"redis_port"`
-	Region       string   `toml:"region"`
-	Regions      []string `toml:"regions"`
+	RabbitMQAddr map[string]string `toml:"rabbitmq_address"`
+	RedisAddr    map[string]string `toml:"redis_address"`
+	RabbitMQPort int               `toml:"rabbitmq_port"`
+	RedisPort    int               `toml:"redis_port"`
+	Regions      []string          `toml:"regions"`
+	Region       string
 }
 
 var (
@@ -61,18 +62,27 @@ var (
 
 func (c *composePostService) Init(ctx context.Context) error {
 	logger := c.Logger(ctx)
-	var err error
-	c.amqChannel, c.amqConnection, err = storage.RabbitMQClient(ctx, c.Config().RabbitMQAddr, c.Config().RabbitMQPort)
+
+	region, err := utils.Region()
 	if err != nil {
 		logger.Error(err.Error())
 		return err
 	}
+	c.Config().Region = region
+	if region == "local" {
+		c.Config().Regions = []string{region}
+	}
 
-	c.redisClient = storage.RedisClient(c.Config().RedisAddr, c.Config().RedisPort)
+	c.amqChannel, c.amqConnection, err = storage.RabbitMQClient(ctx, c.Config().RabbitMQAddr[region], c.Config().RabbitMQPort)
+	if err != nil {
+		logger.Error(err.Error())
+		return err
+	}
+	c.redisClient = storage.RedisClient(c.Config().RedisAddr[region], c.Config().RedisPort)
 
 	logger.Info("compose post service running!", "region", c.Config().Region, "regions", c.Config().Regions,
-		"rabbitmq_addr", c.Config().RabbitMQAddr, "rabbitmq_port", c.Config().RabbitMQPort,
-		"redis_addr", c.Config().RedisAddr, "redis_port", c.Config().RedisPort,
+		"rabbitmq_addr", c.Config().RabbitMQAddr[region], "rabbitmq_port", c.Config().RabbitMQPort,
+		"redis_addr", c.Config().RedisAddr[region], "redis_port", c.Config().RedisPort,
 	)
 	return nil
 }

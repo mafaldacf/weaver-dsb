@@ -4,9 +4,11 @@ import googleapiclient.discovery
 from google.oauth2 import service_account
 import time
 import sys
-import json
 from plumbum import FG
 from plumbum.cmd import gcloud, terraform
+import requests
+from bs4 import BeautifulSoup
+import re
 
 # -----------------
 # GCP configuration
@@ -39,163 +41,43 @@ DOCKER_IMAGES = [ # tag, dir
   ['mongodb-setup:4.4.6', 'mongodb-setup/post-storage'],
   ['rabbitmq-setup:3.8', 'rabbitmq-setup/write-home-timeline'],
 ]
-# -----------------
-# -----------------
+# ------------------------
+# Service Weaver Constants
+# ------------------------
+WEAVER_DASHBOARD_PORT=40599
 
+# --------------
+# Dynamic Config
+# ---------------
 credentials = service_account.Credentials.from_service_account_file(CREDENTIALS_PATH)
 compute = googleapiclient.discovery.build('compute', 'v1', credentials=credentials)
 
-def wait_instance_status(instance_name, zone, status):
-  print(f"[INFO] waiting for instance {instance_name} @ {zone} with status {status}")
-  while True:
-    instance = compute.instances().get(project=PROJECT_ID, zone=zone, instance=instance_name).execute()
-    current_status = instance['status']
-    if instance['status'] != status:
-      print(f"[INFO] waiting... (current status = {current_status})")
-      time.sleep(5)
-    else:
-      print(f"[INFO] instance {instance_name} @ {zone} ready with status {status}")
-      time.sleep(1)
-      return instance
-    
-def wait_image_status(image_name, status):
-  print(f"[INFO] waiting for GCP image {image_name} with status {status}")
-  while True:
-    image = compute.images().get(project=PROJECT_ID, image=image_name).execute()
-    current_status = image['status']
-    if current_status != status:
-      print(f"[INFO] waiting... (current status = {current_status})")
-      time.sleep(5)
-    else:
-      print(f"[INFO] image {image_name} ready with status {status}")
-      time.sleep(1)
-      return image
+def gather_metrics(addr):
+  dashboard_url = f"http://{addr}:{WEAVER_DASHBOARD_PORT}/"
+  response = requests.get(dashboard_url)
+  dashboard_content = response.text
 
-def create_instance(instance_name, hostname, zone, image_name=None):
-  print(f"[INFO] creating {instance_name} instance")
-  delete_instance(instance_name, zone)
-  if image_name:
-    image = compute.images().get(project=PROJECT_ID, image=image_name).execute()
-  else:
-    image = compute.images().getFromFamily(project='debian-cloud', family='debian-11').execute()
-  source_image = image['selfLink']
-  config = {
-    'name': instance_name,
-    'machineType': f"zones/{zone}/machineTypes/e2-medium",
-    'disks': [
-      {
-        'boot': True,
-        'autoDelete': True,
-        'initializeParams': {
-          'sourceImage': source_image,
-          'disk_size_gb': 50,
-        }
-      }
-    ],
-    'hostname': hostname,
-    # Specify a network interface with NAT to access the public internet.
-    'networkInterfaces': [
-      {
-        'network': 'global/networks/default',
-        'accessConfigs': [
-          {'type': 'ONE_TO_ONE_NAT', 'name': 'External NAT'}
-        ]
-      }
-    ],
-    # tags for firewall rules
-    "tags": {
-      "items": [],
-    },
-  }
-  compute.instances().insert(project=PROJECT_ID, zone=zone, body=config).execute()
-  instance = wait_instance_status(instance_name, zone, "RUNNING")
-  network_interface = instance['networkInterfaces'][0]
-  # public, private
-  return network_interface['accessConfigs'][0]['natIP'], network_interface['networkIP']
+  soup = BeautifulSoup(dashboard_content, 'html.parser')
+  deployment_links = soup.find_all('a', href=lambda href: href and '/deployment?id=' in href)
+  deployment_ids = [link['href'].split('=')[-1] for link in deployment_links]
+  deployment_id = deployment_ids[0]
 
-def dev_install_deps():
-  gcloud['compute', 'ssh', DEV_INSTANCE_NAME, '--command', 'echo "Connected!"'] & FG
-  gcloud['compute', 'scp', '--recurse', 'gcp/deps.sh', 'docker-compose.yml', 'config', 'docker', f"{DEV_INSTANCE_NAME}:"] & FG
-  gcloud['compute', 'ssh', DEV_INSTANCE_NAME, '--command', 'bash deps.sh'] & FG
+  metrics_url = f"http://{addr}:{WEAVER_DASHBOARD_PORT}/metrics?id={deployment_id}"
+  response = requests.get(metrics_url)
+  metrics_content = response.text
+  
+  values = re.findall(r'composed_posts\{.*?\}\s(\d+)', metrics_content)
+  num_composed_posts = sum(int(value) for value in values)
 
-def dev_delete_image_if_exists():
-  try:
-    compute.images().get(project=PROJECT_ID, image=DEV_IMAGE_NAME).execute()
-    print("f[WARNING] image {DEV_IMAGE_NAME} already exists")
-    compute.images().delete(project=PROJECT_ID, image=DEV_IMAGE_NAME).execute()
-    while True:
-      compute.images().get(project=PROJECT_ID, image=DEV_IMAGE_NAME).execute()
-      print(f"[INFO] waiting for image {DEV_IMAGE_NAME} to be deleted...")
-      time.sleep(5)
-  except googleapiclient.errors.HttpError as e:
-    # image is only considered to be deleted when we try to
-    # get it and receive a 404 (not found) error code
-    error_info = json.loads(e.args[1])['error']
-    if error_info['code'] == 404:
-      time.sleep(5)
-      print(f"[INFO] image {DEV_IMAGE_NAME} deleted!")
-      pass
-    else:
-      raise(e)
-    
-def delete_instance(instance_name, zone):
-  try:
-    compute.instances().get(project=PROJECT_ID, zone=zone, instance=instance_name).execute()
-    compute.instances().delete(project=PROJECT_ID, zone=zone, instance=instance_name).execute()
-    while True:
-      compute.instances().get(project=PROJECT_ID, zone=zone, instance=instance_name).execute()
-      print(f"[INFO] waiting for instance {DEV_INSTANCE_NAME} to be deleted...")
-      time.sleep(5)
-  except googleapiclient.errors.HttpError as e:
-    # instance is only considered to be deleted when we try to
-    # get it and receive a 404 (not found) error code
-    error_info = json.loads(e.args[1])['error']
-    if error_info['code'] == 404:
-      time.sleep(5)
-      print(f"[INFO] instance {DEV_IMAGE_NAME} deleted!")
-      pass
-    else:
-      raise(e)
+  values = re.findall(r'inconsistencies\{.*?\}\s(\d+)', metrics_content)
+  num_inconsistencies = sum(int(value) for value in values)
 
-def dev_build_docker_images():
-  for tag, dir in DOCKER_IMAGES:
-    cmd = f'sudo docker build -t {tag} ~/docker/{dir}/.'
-    gcloud['compute', 'ssh', DEV_IMAGE_NAME, '--command', cmd] & FG
+  pc_inconsistencies = "{:.2f}".format((num_inconsistencies / num_composed_posts) * 100)
+  return num_composed_posts, num_inconsistencies, pc_inconsistencies
 
-def dev_create_image():
-  print("[INFO] creating image")
-  # stop instance
-  compute.instances().stop(project=PROJECT_ID, zone=DEV_ZONE, instance=DEV_INSTANCE_NAME).execute()
-  wait_instance_status(DEV_INSTANCE_NAME, DEV_ZONE, 'TERMINATED')
-
-  image_config = {
-    "kind": "compute#image",
-    "name": DEV_IMAGE_NAME,
-    "sourceDisk": f"projects/{PROJECT_ID}/zones/{DEV_ZONE}/disks/{DEV_IMAGE_NAME}",
-    "storageLocations": [
-      "us"
-    ]
-  }
-  # create image
-  compute.images().insert(project=PROJECT_ID, body=image_config).execute()
-  wait_image_status(DEV_IMAGE_NAME, 'READY')
-  delete_instance(DEV_INSTANCE_NAME, DEV_ZONE)
-
-def build():
-  print("[INFO] ---- BUILDING ----")
-  create_instance(DEV_INSTANCE_NAME, DEV_INSTANCE_HOSTNAME, DEV_ZONE)
-  # wait for ssh
-  time.sleep(25)
-  dev_install_deps()
-  dev_build_docker_images()
-  dev_create_image()
-  print("[INFO] ---- BUILD DONE! ----")
-
-def deploy():
-  print("[INFO] ---- DEPLOYING ----")
-  for name, zone in INSTANCES:
-    create_instance(name, f'{name}.dev', zone, DEV_IMAGE_NAME)
-  print("[INFO] ---- DEPLOY DONE! ----")
+# --------------------
+# GCP
+# --------------------
 
 def get_instance_ips(instance_name, zone):
   instance = compute.instances().get(project=PROJECT_ID, zone=zone, instance=instance_name).execute()
@@ -204,8 +86,6 @@ def get_instance_ips(instance_name, zone):
   return network_interface['accessConfigs'][0]['natIP'], network_interface['networkIP']
 
 def run():
-  print("[INFO] ---- RUNNING ----")
-
   # get public ip for each instance
   public_ip_manager, _ = get_instance_ips(INSTANCE_NAME_MANAGER, ZONE_MANAGER)
   public_ip_eu, _ = get_instance_ips(INSTANCE_NAME_EU, ZONE_EU)
@@ -238,38 +118,51 @@ def run():
   cmd = f'sudo docker stack deploy --with-registry-auth --compose-file ~/weaver-dsb-socialnetwork/docker-compose.yml socialnetwork'
   gcloud['compute', 'ssh', INSTANCE_NAME_MANAGER, '--command', cmd] & FG
 
-  print("[INFO] ---- RUN DONE ----")
-
 def info():
   cmd = f'sudo docker service ls'
   gcloud['compute', 'ssh', INSTANCE_NAME_MANAGER, '--command', cmd] & FG
 
-def destroy():
-  print("[INFO] ---- DESTROYING ----")
-  for name, zone in INSTANCES:
-    delete_instance(name, zone)
-  print("[INFO] ---- DESTROY DONE ----")
-
-def terraform_deploy():
-  print("[INFO] deploying...")
+def deploy():
   terraform['-chdir=./terraform', 'init'] & FG
   terraform['-chdir=./terraform', 'apply'] & FG
   # wait 30 seconds to install dependencies in all gpc instances
   print("[INFO] waiting 90 seconds to install all dependencies in GCP instances...")
   time.sleep(90)
-  print("[INFO] done!")
   
-def terraform_clean():
-  print("[INFO] cleaning...")
+def clean():
   terraform['-chdir=./terraform', 'destroy'] & FG
-  print("[INFO] done!")
+
+def metrics():
+  pass
+
+# --------------------
+# LOCAL
+# --------------------
+
+def local_deploy():
+  pass
+
+def local_run():
+  pass
+
+def local_metrics():
+  num_composed_posts, num_inconsistencies, pc_inconsistencies = gather_metrics("127.0.0.1")
+  print("# composed posts:\t", num_composed_posts)
+  print("# inconsistencies:\t", num_inconsistencies)
+  print("% inconsistencies:\t", pc_inconsistencies)
+
+def local_clean():
+  pass
 
 if __name__ == "__main__":
   main_parser = argparse.ArgumentParser()
   command_parser = main_parser.add_subparsers(help='commands', dest='command')
-  commands = ['terraform-deploy', 'terraform-clean', 'run']
+  commands = ['deploy', 'run', 'metrics', 'info', 'clean', 'local-deploy', 'local-run', 'local-metrics', 'local-clean']
   for cmd in commands:
       command_parser.add_parser(cmd)
   args = vars(main_parser.parse_args())
   command = args.pop('command').replace('-', '_')
+
+  print(f"[INFO] ----- {command.upper()} -----")
   getattr(sys.modules[__name__], command)(**args)
+  print(f"[INFO] done!")

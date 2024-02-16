@@ -4,6 +4,7 @@ import (
 	"context"
 	"socialnetwork/pkg/model"
 	"socialnetwork/pkg/storage"
+	"socialnetwork/pkg/utils"
 	"strconv"
 
 	"github.com/ServiceWeaver/weaver"
@@ -18,33 +19,42 @@ type HomeTimelineService interface {
 type homeTimelineService struct {
 	weaver.Implements[HomeTimelineService]
 	weaver.WithConfig[homeTimelineServiceOptions]
-	postStorageService   weaver.Ref[PostStorageService]
-	redisClient   		 *redis.Client
+	postStorageService weaver.Ref[PostStorageService]
+	redisClient        *redis.Client
 }
 
 type homeTimelineServiceOptions struct {
-	RedisAddr        string   `toml:"redis_address"`
-	RedisPort        int      `toml:"redis_port"`
+	RedisAddr map[string]string `toml:"redis_address"`
+	RedisPort int               `toml:"redis_port"`
+	Region    string
 }
 
 func (h *homeTimelineService) Init(ctx context.Context) error {
 	logger := h.Logger(ctx)
-	h.redisClient = storage.RedisClient(h.Config().RedisAddr, h.Config().RedisPort)
-	logger.Info("home timeline service running!", "rabbitmq_addr", h.Config().RedisAddr, "rabbitmq_port", h.Config().RedisPort)
+	region, err := utils.Region()
+	if err != nil {
+		logger.Error(err.Error())
+		return err
+	}
+	h.Config().Region = region
+	h.redisClient = storage.RedisClient(h.Config().RedisAddr[region], h.Config().RedisPort)
+	logger.Info("home timeline service running!", "region", h.Config().Region,
+		"rabbitmq_addr", h.Config().RedisAddr[region], "rabbitmq_port", h.Config().RedisPort,
+	)
 	return nil
 }
 
 // readCachedTimeline is an helper function for reading timeline from redis with the same behavior as in the user timeline service
 func (h *homeTimelineService) readCachedTimeline(ctx context.Context, userID int64, start int64, stop int64) ([]int64, error) {
-	logger := h. Logger(ctx)
-	
+	logger := h.Logger(ctx)
+
 	userIDStr := strconv.FormatInt(userID, 10)
-	result, err := h. redisClient.ZRevRange(ctx, userIDStr, start, stop-1).Result()
+	result, err := h.redisClient.ZRevRange(ctx, userIDStr, start, stop-1).Result()
 	if err != nil {
 		logger.Error("error reading home timeline from redis")
 		return nil, err
 	}
-	
+
 	var postIDs []int64
 	for _, result := range result {
 		id, err := strconv.ParseInt(result, 10, 64)

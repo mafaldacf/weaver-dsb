@@ -22,8 +22,13 @@ type UniqueIdService interface {
 	UploadUniqueId(ctx context.Context, reqID int64, postType model.PostType) error
 }
 
+type uniqueIdOptions struct {
+	Region 	 	string
+}
+
 type uniqueIdService struct {
 	weaver.Implements[UniqueIdService]
+	weaver.WithConfig[uniqueIdOptions]
 	composePostService 	weaver.Ref[ComposePostService]
 	currentTimestamp 	int64
 	counter 			int64
@@ -33,11 +38,19 @@ type uniqueIdService struct {
 
 func (u *uniqueIdService) Init(ctx context.Context) error {
 	logger := u.Logger(ctx)
+
+	region, err := utils.Region()
+	if err != nil {
+		logger.Error(err.Error())
+		return err
+	}
+	u.Config().Region = region
+
 	u.machineID = u.getMachineID(ctx) //FIXME
 	u.machineID = "0"
 	u.currentTimestamp = -1
 	u.counter = 0
-	logger.Info("unique id service running!", "machine_id", u.machineID)
+	logger.Info("unique id service running!", "machine_id", u.machineID, "region", u.Config().Region)
 	return nil
 }
 

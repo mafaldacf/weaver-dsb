@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"socialnetwork/pkg/model"
+	"socialnetwork/pkg/utils"
 
 	"github.com/ServiceWeaver/weaver"
 )
@@ -15,8 +16,13 @@ type TextService interface {
 	UploadText(ctx context.Context, reqID int64, text string) error
 }
 
+type textServiceOptions struct {
+	Region 	 	string
+}
+
 type textService struct {
 	weaver.Implements[TextService]
+	weaver.WithConfig[textServiceOptions]
 	composePostService   weaver.Ref[ComposePostService]
 	urlShortenService    weaver.Ref[UrlShortenService]
 	userMentionService   weaver.Ref[UserMentionService]
@@ -24,7 +30,15 @@ type textService struct {
 
 func (t *textService) Init(ctx context.Context) error {
 	logger := t.Logger(ctx)
-	logger.Info("text service running!")
+
+	region, err := utils.Region()
+	if err != nil {
+		logger.Error(err.Error())
+		return err
+	}
+	t.Config().Region = region
+
+	logger.Info("text service running!", "region", t.Config().Region)
 	return nil
 }
 

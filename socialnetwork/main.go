@@ -1,4 +1,4 @@
-//go:generate weaver generate ./pkg/wrk2 . ./pkg/services ./pkg/model
+//go:generate weaver generate ./pkg/wrk2 . ./pkg/services ./pkg/model ./pkg/trace
 
 package main
 

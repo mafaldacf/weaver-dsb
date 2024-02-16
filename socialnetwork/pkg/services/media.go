@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"socialnetwork/pkg/model"
+	"socialnetwork/pkg/utils"
 
 	"github.com/ServiceWeaver/weaver"
 )
@@ -14,12 +15,25 @@ type MediaService interface {
 
 type mediaService struct {
 	weaver.Implements[MediaService]
+	weaver.WithConfig[mediaServiceOptions]
 	composePostService   weaver.Ref[ComposePostService]
+}
+
+type mediaServiceOptions struct {
+	Region    string
 }
 
 func (m *mediaService) Init(ctx context.Context) error {
 	logger := m.Logger(ctx)
-	logger.Info("media service running!")
+
+	region, err := utils.Region()
+	if err != nil {
+		logger.Error(err.Error())
+		return err
+	}
+	m.Config().Region = region
+
+	logger.Info("media service running!", "region", m.Config().Region)
 	return nil
 }
 

@@ -6,6 +6,7 @@ import (
 
 	"socialnetwork/pkg/model"
 	"socialnetwork/pkg/storage"
+	"socialnetwork/pkg/utils"
 
 	"github.com/ServiceWeaver/weaver"
 	"github.com/bradfitz/gomemcache/memcache"
@@ -29,10 +30,11 @@ type urlShortenService struct {
 }
 
 type urlShortenServiceOptions struct {
-	MongoDBAddr 	string `toml:"mongodb_address"`
-	MongoDBPort 	int    `toml:"mongodb_port"`
-	MemCachedAddr 	string `toml:"memcached_addr"`
-	MemCachedPort 	int    `toml:"memcached_port"`
+	MongoDBAddr 	map[string]string 	`toml:"mongodb_address"`
+	MemCachedAddr 	map[string]string 	`toml:"memcached_address"`
+	MongoDBPort 	int    				`toml:"mongodb_port"`
+	MemCachedPort 	int    				`toml:"memcached_port"`
+	Region 			string
 }
 
 func (u *urlShortenService) genRandomStr(length int) string {
@@ -45,17 +47,24 @@ func (u *urlShortenService) genRandomStr(length int) string {
 
 func (u *urlShortenService) Init(ctx context.Context) error {
 	logger := u.Logger(ctx)
-	var err error
-	u.mongoClient, err = storage.MongoDBClient(ctx, u.Config().MongoDBAddr, u.Config().MongoDBPort)
+
+	region, err := utils.Region()
+	if err != nil {
+		logger.Error(err.Error())
+		return err
+	}
+	u.Config().Region = region
+
+	u.mongoClient, err = storage.MongoDBClient(ctx, u.Config().MongoDBAddr[region], u.Config().MongoDBPort)
 	if err != nil {
 		logger.Error(err.Error())
 		return err
 	}
 
-	u.memCachedClient = storage.MemCachedClient(u.Config().MemCachedAddr, u.Config().MemCachedPort)
-	logger.Info("url shorten service running!",
-		"mongodb_addr", u.Config().MongoDBAddr, "mongodb_port", u.Config().MongoDBPort,
-		"memcached_addr", u.Config().MemCachedAddr, "memcached_port", u.Config().MemCachedPort,
+	u.memCachedClient = storage.MemCachedClient(u.Config().MemCachedAddr[region], u.Config().MemCachedPort)
+	logger.Info("url shorten service running!", "region", u.Config().Region,
+		"mongodb_addr", u.Config().MongoDBAddr[region], "mongodb_port", u.Config().MongoDBPort,
+		"memcached_addr", u.Config().MemCachedAddr[region], "memcached_port", u.Config().MemCachedPort,
 	)
 	return nil
 }
