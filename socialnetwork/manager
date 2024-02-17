@@ -9,75 +9,38 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import toml
+import yaml
+from time import sleep
+from tqdm import tqdm
 
+NUMBER_DOCKER_SWARM_SERVICE = 13
+NUMBER_DOCKER_SWARM_NODES   = 3
 # -----------
 # GCP profile
 # -----------
-GCP_PROJECT_ID = "weaver-411410"
-GCP_USERNAME = "mafaldacf"
-GCP_CLOUD_STORAGE_BUCKET_NAME = "weaver-411410_cloudbuild"
+with open('gcp/config.yml', 'r') as file:
+    config = yaml.safe_load(file)
+    GCP_PROJECT_ID                = str(config['project_id'])
+    GCP_USERNAME                  = str(config['username'])
+    GCP_CLOUD_STORAGE_BUCKET_NAME = str(config['cloud_storage_bucket_name'])
+
 # -----------------
 # GCP configuration
 # -----------------
-DEV_INSTANCE_NAME = "weaver-dsb-socialnetwork"
-DEV_IMAGE_NAME = "weaver-dsb-socialnetwork"
-DEV_INSTANCE_HOSTNAME = "weaver-dsb-socialnetwork.dev"
-DEV_ZONE = "europe-west3-a"
-INSTANCE_NAME_MANAGER = "weaver-dsb-db-manager"
-INSTANCE_NAME_EU = "weaver-dsb-db-eu"
-INSTANCE_NAME_US = "weaver-dsb-db-us"
-ZONE_MANAGER = "europe-west3-a"
-ZONE_EU = "europe-west3-a"
-ZONE_US = "us-central1-a"
-SSH_KEY_PATH = f"/home/{GCP_USERNAME}/.ssh/google_compute_engine"
-CREDENTIALS_PATH = "gcp/credentials.json"
-
-INSTANCES = [ # name, zone
-  [INSTANCE_NAME_MANAGER, ZONE_MANAGER],
-  [INSTANCE_NAME_EU, ZONE_EU],
-  [INSTANCE_NAME_US, ZONE_US],
-]
-# --------------------
-# Docker configuration
-# --------------------
-DOCKER_IMAGES = [ # tag, dir
-  ['mongodb-delayed:4.4.6', 'mongodb-delayed'],
-  ['mongodb-setup:4.4.6', 'mongodb-setup/post-storage'],
-  ['rabbitmq-setup:3.8', 'rabbitmq-setup/write-home-timeline'],
-]
-# ------------------------
-# Service Weaver Constants
-# ------------------------
-WEAVER_DASHBOARD_PORT=40599
+# same as in terraform
+APP_FOLDER_NAME           = "weaver-dsb-socialnetwork"
+GCP_INSTANCE_NAME_MANAGER = "weaver-dsb-db-manager"
+GCP_INSTANCE_NAME_EU      = "weaver-dsb-db-eu"
+GCP_INSTANCE_NAME_US      = "weaver-dsb-db-us"
+GCP_ZONE_MANAGER          = "europe-west3-a"
+GCP_ZONE_EU               = "europe-west3-a"
+GCP_ZONE_US               = "us-central1-a"
 
 # --------------
 # Dynamic Config
 # ---------------
-credentials = service_account.Credentials.from_service_account_file(CREDENTIALS_PATH)
+credentials = service_account.Credentials.from_service_account_file("gcp/credentials.json")
 compute = googleapiclient.discovery.build('compute', 'v1', credentials=credentials)
-
-def gather_metrics(addr):
-  dashboard_url = f"http://{addr}:{WEAVER_DASHBOARD_PORT}/"
-  response = requests.get(dashboard_url)
-  dashboard_content = response.text
-
-  soup = BeautifulSoup(dashboard_content, 'html.parser')
-  deployment_links = soup.find_all('a', href=lambda href: href and '/deployment?id=' in href)
-  deployment_ids = [link['href'].split('=')[-1] for link in deployment_links]
-  deployment_id = deployment_ids[0]
-
-  metrics_url = f"http://{addr}:{WEAVER_DASHBOARD_PORT}/metrics?id={deployment_id}"
-  response = requests.get(metrics_url)
-  metrics_content = response.text
-  
-  values = re.findall(r'composed_posts\{.*?\}\s(\d+)', metrics_content)
-  num_composed_posts = sum(int(value) for value in values)
-
-  values = re.findall(r'inconsistencies\{.*?\}\s(\d+)', metrics_content)
-  num_inconsistencies = sum(int(value) for value in values)
-
-  pc_inconsistencies = "{:.2f}".format((num_inconsistencies / num_composed_posts) * 100)
-  return num_composed_posts, num_inconsistencies, pc_inconsistencies
 
 # --------------------
 # GCP
@@ -93,21 +56,21 @@ def storage_start():
   from plumbum.cmd import gcloud
 
   # get public ip for each instance
-  public_ip_manager, _ = get_instance_ips(INSTANCE_NAME_MANAGER, ZONE_MANAGER)
-  public_ip_eu, _ = get_instance_ips(INSTANCE_NAME_EU, ZONE_EU)
-  public_ip_us, _ = get_instance_ips(INSTANCE_NAME_US, ZONE_US)
+  public_ip_manager, _ = get_instance_ips(GCP_INSTANCE_NAME_MANAGER, GCP_ZONE_MANAGER)
+  public_ip_eu, _ = get_instance_ips(GCP_INSTANCE_NAME_EU, GCP_ZONE_EU)
+  public_ip_us, _ = get_instance_ips(GCP_INSTANCE_NAME_US, GCP_ZONE_US)
 
   # --- swarm manager
   cmd = f'sudo docker swarm init --advertise-addr {public_ip_manager}:2377'
-  gcloud['compute', 'ssh', INSTANCE_NAME_MANAGER, '--zone', ZONE_MANAGER, '--command', cmd] & FG
+  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', cmd] & FG
 
   cmd = f'sudo docker network create --attachable -d overlay deathstarbench_network'
-  gcloud['compute', 'ssh', INSTANCE_NAME_MANAGER, '--zone', ZONE_MANAGER, '--command', cmd] & FG
+  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', cmd] & FG
 
   cmd = f'sudo docker swarm join-token --quiet worker > token.txt'
-  gcloud['compute', 'ssh', INSTANCE_NAME_MANAGER, '--zone', ZONE_MANAGER, '--command', cmd] & FG
+  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', cmd] & FG
 
-  gcloud['compute', 'scp', f"{INSTANCE_NAME_MANAGER}:token.txt", 'gcp/token.txt'] & FG
+  gcloud['compute', 'scp', f"{GCP_INSTANCE_NAME_MANAGER}:token.txt", 'gcp/token.txt'] & FG
 
   f = open('gcp/token.txt', 'r')
   token = f.read().strip()
@@ -115,29 +78,49 @@ def storage_start():
 
   # --- nodes
   cmd = f'sudo docker swarm join --token {token} {public_ip_manager}:2377 --advertise-addr {public_ip_eu}'
-  gcloud['compute', 'ssh', INSTANCE_NAME_EU, '--zone', ZONE_EU, '--command', cmd] & FG
+  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_EU, '--zone', GCP_ZONE_EU, '--command', cmd] & FG
 
   cmd = f'sudo docker swarm join --token {token} {public_ip_manager}:2377 --advertise-addr {public_ip_us}'
-  gcloud['compute', 'ssh', INSTANCE_NAME_US, '--zone', ZONE_US ,'--command', cmd] & FG
+  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_US, '--zone', GCP_ZONE_US ,'--command', cmd] & FG
 
   # --- manager
-  cmd = f'sudo docker stack deploy --with-registry-auth --compose-file ~/weaver-dsb-socialnetwork/docker-compose.yml socialnetwork'
-  gcloud['compute', 'ssh', INSTANCE_NAME_MANAGER, '--command', cmd] & FG
+  cmd = f'sudo docker stack deploy --with-registry-auth --compose-file ~/{APP_FOLDER_NAME}/docker-compose.yml socialnetwork'
+  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--command', cmd] & FG
+
+  print("[INFO] waiting 30 seconds for docker swarm...")
+  for _ in tqdm(range(30)):
+      sleep(1)
+
+  try:
+    cmd_nodes_ready_counter = "sudo docker node ls --format '{{.Hostname}}: {{.Status}}' | grep 'Ready' | wc -l"
+    cmd = f"if [ $({cmd_nodes_ready_counter}) -eq {NUMBER_DOCKER_SWARM_NODES} ]; then echo docker swarm nodes OK!; else exit 1; fi"
+    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--command', cmd] & FG
+  except Exception as e:
+    print(f"[ERROR] not all nodes are ready\n\n{e}")
+    exit(-1)
+
+  try:
+    cmd_services_counter = "sudo docker stack services socialnetwork --format '{{.Name}}: {{.Replicas}}' | grep '1/1' | wc -l"
+    cmd = f"if [ $({cmd_services_counter}) -eq {NUMBER_DOCKER_SWARM_SERVICE} ]; then echo docker swarm services OK!; else exit 1; fi"
+    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--command', cmd] & FG
+  except Exception as e:
+    print(f"[ERROR] not all services are replicated\n\n{e}")
+    exit(-1)
 
 def storage_info():
   from plumbum.cmd import gcloud
   cmd = f'sudo docker node ls'
-  gcloud['compute', 'ssh', INSTANCE_NAME_MANAGER, '--command', cmd] & FG
+  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--command', cmd] & FG
   cmd = f'sudo docker service ls'
-  gcloud['compute', 'ssh', INSTANCE_NAME_MANAGER, '--command', cmd] & FG
+  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--command', cmd] & FG
 
   print()
-  public_ip_manager, _ = get_instance_ips(INSTANCE_NAME_MANAGER, ZONE_MANAGER)
-  print("storage manager running at @", public_ip_manager)
-  public_ip_eu, _ = get_instance_ips(INSTANCE_NAME_EU, ZONE_EU)
-  print(f"storage in {ZONE_EU} running at @", public_ip_eu)
-  public_ip_us, _ = get_instance_ips(INSTANCE_NAME_US, ZONE_US)
-  print(f"storage in {ZONE_US} running at @", public_ip_us)
+  public_ip_manager, _ = get_instance_ips(GCP_INSTANCE_NAME_MANAGER, GCP_ZONE_MANAGER)
+  print("storage manager running @", public_ip_manager)
+  public_ip_eu, _ = get_instance_ips(GCP_INSTANCE_NAME_EU, GCP_ZONE_EU)
+  print(f"storage in {GCP_ZONE_EU} running @", public_ip_eu)
+  public_ip_us, _ = get_instance_ips(GCP_INSTANCE_NAME_US, GCP_ZONE_US)
+  print(f"storage in {GCP_ZONE_US} running @", public_ip_us)
   print()
 
   gen_weaver_config(public_ip_eu, public_ip_us)
@@ -148,6 +131,7 @@ def gen_weaver_config(public_ip_eu = "0.0.0.0", public_ip_us = "0.0.0.0"):
   for _, config in data.items():
     for entry, values in config.items():
       if entry in ['mongodb_address', 'redis_address', 'rabbitmq_address', 'memcached_address']:
+        values["local"] = public_ip_eu
         values["europe-west3"] = public_ip_eu
         values["us-central-1"] = public_ip_us
 
@@ -158,54 +142,132 @@ def gen_weaver_config(public_ip_eu = "0.0.0.0", public_ip_us = "0.0.0.0"):
 
 def storage_deploy():
   from plumbum.cmd import terraform, mkdir, cp, gsutil, rm
+  from plumbum.cmd import gcloud
 
-  mkdir['weaver-dsb-socialnetwork'] & FG
-  cp['-r', 'docker-compose.yml', 'docker', 'config', 'weaver-dsb-socialnetwork'] & FG
-  gsutil['cp', '-r', 'weaver-dsb-socialnetwork', f'gs://{GCP_CLOUD_STORAGE_BUCKET_NAME}/'] & FG
-  rm['-r', 'weaver-dsb-socialnetwork'] & FG
+  mkdir['-p', f'tmp/{APP_FOLDER_NAME}'] & FG
+  cp['-r', 'docker-compose.yml', 'docker', 'config', APP_FOLDER_NAME] & FG
+  gsutil['cp', '-r', f'tmp/{APP_FOLDER_NAME}', f'gs://{GCP_CLOUD_STORAGE_BUCKET_NAME}/'] & FG
+  rm['-r', 'tmp'] & FG
 
   terraform['-chdir=./terraform', 'init'] & FG
   terraform['-chdir=./terraform', 'apply'] & FG
 
-  print("[INFO] waiting 120 seconds to install all dependencies in GCP instances...")
-  time.sleep(120)
+  print("[INFO] waiting 200 seconds to install all dependencies in GCP instances...")
+  for _ in tqdm(range(200)):
+      sleep(1)
+
+  def move_app_folder():
+    return f'sudo mv /{APP_FOLDER_NAME} /home/{GCP_USERNAME}/{APP_FOLDER_NAME} 2>/dev/null; true'
+  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', move_app_folder()] & FG
+  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_EU, '--zone', GCP_ZONE_EU, '--command', move_app_folder()] & FG
+  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_US, '--zone', GCP_ZONE_US, '--command', move_app_folder()] & FG
+  
+  def validate_app_folder(instance_identifier):
+    return f'if [ -d "/home/{GCP_USERNAME}/{APP_FOLDER_NAME}" ]; then echo "{instance_identifier}: app folder OK!"; fi'
+  try:
+    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', validate_app_folder('manager')] & FG
+    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_EU, '--zone', GCP_ZONE_EU, '--command', validate_app_folder('storage @ eu')] & FG
+    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_US, '--zone', GCP_ZONE_US, '--command', validate_app_folder('storage @ us')] & FG
+  except Exception as e:
+    print(f"[ERROR] app folder missing in gcp instance:\n\n{e}")
+    exit(-1)
+
+  def validate_docker_images(instance_identifier):
+    return f'if [ $(sudo docker images | tail -n +2 | wc -l) -eq 6 ]; then echo "{instance_identifier}: docker images OK!"; else exit 1; fi'
+  try:
+    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', validate_docker_images('manager')] & FG
+    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_EU, '--zone', GCP_ZONE_EU, '--command', validate_docker_images('storage @ eu')] & FG
+    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_US, '--zone', GCP_ZONE_US, '--command', validate_docker_images('storage @ us')] & FG
+  except Exception as e:
+    print(f"[ERROR] app folder missing in gcp instance:\n\n{e}")
+    exit(-1)
+  
   
 def storage_clean():
   from plumbum.cmd import terraform
   terraform['-chdir=./terraform', 'destroy'] & FG
 
-def metrics():
-  #FIXME
-  #from plumbum.cmd import weaver
-  #weaver['multi', 'status'] & FG
+def init_social_graph():
+  pass
 
+def wrk2():
+  pass
 
-  num_composed_posts, num_inconsistencies, pc_inconsistencies = gather_metrics("localhost")
+# METRICS FORMAT
+#╭────────────────────────────────────────────────────────────────────────╮
+#│ // The number of composed posts                                        │
+#│ composed_posts: COUNTER                                                │
+#├───────────────────┬────────────────────┬───────────────────────┬───────┤
+#│ serviceweaver_app │ serviceweaver_node │ serviceweaver_version │ Value │
+#├───────────────────┼────────────────────┼───────────────────────┼───────┤
+#│ weaver-dsb-db     │ 0932683b           │ 1cd20361              │ 0     │
+#│ weaver-dsb-db     │ 1205179c           │ 1cd20361              │ 0     │
+#|  ...              | ...                | ...                   | ...   |
+#╰───────────────────┴────────────────────┴───────────────────────┴───────╯
+#
+#╭────────────────────────────────────────────────────────────────────────╮
+#│ // The number of times an cross-service inconsistency has occured      │
+#│ inconsistencies: COUNTER                                               │
+#├───────────────────┬────────────────────┬───────────────────────┬───────┤
+#│ serviceweaver_app │ serviceweaver_node │ serviceweaver_version │ Value │
+#├───────────────────┼────────────────────┼───────────────────────┼───────┤
+#│ weaver-dsb-db     │ 0932683b           │ 1cd20361              │ 0     │
+#│ weaver-dsb-db     │ 1205179c           │ 1cd20361              │ 0     │
+#|  ...              | ...                | ...                   | ...   |
+#╰───────────────────┴────────────────────┴───────────────────────┴───────╯
+
+def metrics(deployment_type='gke'):
+  from plumbum.cmd import weaver
+  import re
+
+  pattern = re.compile(r'^.*│.*│.*│.*│\s*(\d+)\s*│.*$', re.MULTILINE)
+
+  metrics_composed_posts = weaver[deployment_type, 'metrics', 'composed_posts']()
+  values = pattern.findall(metrics_composed_posts)
+  num_composed_posts = sum(int(value) for value in values)
+
+  metrics_inconsistencies = weaver[deployment_type, 'metrics', 'inconsistencies']()
+  values = pattern.findall(metrics_inconsistencies)
+  num_inconsistencies = sum(int(value) for value in values)
+
+  pc_inconsistencies = "{:.2f}".format((num_inconsistencies / num_composed_posts) * 100)
+
   print("# composed posts:\t", num_composed_posts)
   print("# inconsistencies:\t", num_inconsistencies)
   print("% inconsistencies:\t", pc_inconsistencies)
-
-def wkr2():
-  pass
 
 # --------------------
 # LOCAL
 # --------------------
 
-def local_storage_deploy():
-  pass
+def local_init_social_graph():
+  from plumbum import local
+  with local.env({"HOST_EU":"http://localhost:9000", "HOST_US":"http://localhost:9000"}):
+    local['./scripts/init_social_graph.py'] & FG
 
-def local_storage_start():
-  pass
+#./wrk2/wrk -D exp -t 1 -c 1 -d 1 -L -s ./scripts/social-network/compose-post.lua http://localhost:9000/wrk2-api/post/compose -R 1
+def local_wrk2(threads=1, conns=1, duration=1, reqs=1):
+  from plumbum import local
+  with local.env({"HOST_EU":"http://localhost:9000", "HOST_US":"http://localhost:9000"}):
+      wrk2 = local['./wrk2/wrk']
+      wrk2['-D', 'exp', '-t', str(threads), '-c', str(conns), '-d', str(duration), '-L', '-s', './wrk2/scripts/social-network/compose-post.lua', 'http://localhost:9000/wrk2-api/post/compose', '-R', str(reqs)] & FG
 
 def local_metrics():
-  num_composed_posts, num_inconsistencies, pc_inconsistencies = gather_metrics("localhost")
-  print("# composed posts:\t", num_composed_posts)
-  print("# inconsistencies:\t", num_inconsistencies)
-  print("% inconsistencies:\t", pc_inconsistencies)
+  metrics('multi')
+
+def local_storage_deploy():
+  from plumbum.cmd import docker
+  docker['build', '-t', 'mongodb-delayed:4.4.6', 'docker/mongodb-delayed/.'] & FG
+  docker['build', '-t', 'mongodb-setup:4.4.6', 'docker/mongodb-setup/post-storage/.'] & FG
+  docker['build', '-t', 'rabbitmq-setup:3.8', 'docker/rabbitmq-setup/write-home-timeline/.'] & FG
+
+def local_storage_start():
+  from plumbum.cmd import docker_compose
+  docker_compose['up', '-d'] & FG
 
 def local_storage_clean():
-  pass
+  from plumbum.cmd import docker_compose
+  docker_compose['down'] & FG
 
 if __name__ == "__main__":
   main_parser = argparse.ArgumentParser()
@@ -216,17 +278,23 @@ if __name__ == "__main__":
     # gcp datastores
     'storage-deploy', 'storage-start', 'storage-info', 'storage-clean', 
     # gcp app
-    'wrk2', 'metrics',
-    # ----------------
-    # local datastores
-    'local-storage-deploy', 'local-storage-start', 'local-storage-clean'
-    # local app
-    'local-wrk2', 'local-metrics',
+    'init-social-graph', 'wrk2', 'metrics',
   ]
   for cmd in commands:
-      command_parser.add_parser(cmd)
+    parser = command_parser.add_parser(cmd)
+    parser.add_argument('--local', action='store_true', help="Running in localhost")
+    if cmd == 'wrk2':
+      parser.add_argument('-t', '--threads', default=1, help="Number of threads")
+      parser.add_argument('-c', '--conns', default=1, help="Number of connections")
+      parser.add_argument('-d', '--duration', default=1, help="Duration")
+      parser.add_argument('-r', '--reqs', default=1, help="Number of requests per second")
+
   args = vars(main_parser.parse_args())
   command = args.pop('command').replace('-', '_')
+  local = args.pop('local')
+
+  if local:
+    command = 'local_' + command
 
   print(f"[INFO] ----- {command.upper()} -----")
   getattr(sys.modules[__name__], command)(**args)

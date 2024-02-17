@@ -9,7 +9,6 @@ import (
 	"strings"
 )
 
-// const DEFAULT_REGION = "europe-west3"
 const DEFAULT_REGION = "local"
 
 func BoolToPtr(v bool) *bool {

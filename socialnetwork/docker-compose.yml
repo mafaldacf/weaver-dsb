@@ -42,7 +42,7 @@ services:
   #  hostname: home-timeline-redis-eu
   #  command: 'redis-server --slaveof home-timeline-redis-eu 6379 --replica-read-only no'
   #  ports:
-  #    6382:6379
+  #    - 6382:6379
   #  restart: 'no'
   #  deploy:
   #    placement:

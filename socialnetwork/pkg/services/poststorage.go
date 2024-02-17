@@ -52,7 +52,6 @@ func (p *postStorageService) Init(ctx context.Context) error {
 		return err
 	}
 	p.Config().Region = region
-
 	p.mongoClient, err = storage.MongoDBClient(ctx, p.Config().MongoDBAddr[region], p.Config().MongoDBPort)
 	if err != nil {
 		logger.Error(err.Error())

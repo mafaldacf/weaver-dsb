@@ -7,6 +7,6 @@
 # - gcp_zone                     :string (required)
 
 gcp_credentials_path = "../gcp/credentials.json"
-gcp_project          = "weaver-411410"
+gcp_project          = "weaver-414617"
 gcp_region           = "europe-west3"
 gcp_zone             = "europe-west3-a"
