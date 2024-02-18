@@ -47,8 +47,8 @@ type composePostService struct {
 type composePostServiceOptions struct {
 	RabbitMQAddr map[string]string `toml:"rabbitmq_address"`
 	RedisAddr    map[string]string `toml:"redis_address"`
-	RabbitMQPort int               `toml:"rabbitmq_port"`
-	RedisPort    int               `toml:"redis_port"`
+	RabbitMQPort map[string]int    `toml:"rabbitmq_port"`
+	RedisPort    map[string]int    `toml:"redis_port"`
 	Regions      []string          `toml:"regions"`
 	Region       string
 }
@@ -73,16 +73,16 @@ func (c *composePostService) Init(ctx context.Context) error {
 		c.Config().Regions = []string{region}
 	}
 
-	c.amqChannel, c.amqConnection, err = storage.RabbitMQClient(ctx, c.Config().RabbitMQAddr[region], c.Config().RabbitMQPort)
+	c.amqChannel, c.amqConnection, err = storage.RabbitMQClient(ctx, c.Config().RabbitMQAddr[region], c.Config().RabbitMQPort[region])
 	if err != nil {
 		logger.Error(err.Error())
 		return err
 	}
-	c.redisClient = storage.RedisClient(c.Config().RedisAddr[region], c.Config().RedisPort)
+	c.redisClient = storage.RedisClient(c.Config().RedisAddr[region], c.Config().RedisPort[region])
 
 	logger.Info("compose post service running!", "region", c.Config().Region, "regions", c.Config().Regions,
-		"rabbitmq_addr", c.Config().RabbitMQAddr[region], "rabbitmq_port", c.Config().RabbitMQPort,
-		"redis_addr", c.Config().RedisAddr[region], "redis_port", c.Config().RedisPort,
+		"rabbitmq_addr", c.Config().RabbitMQAddr[region], "rabbitmq_port", c.Config().RabbitMQPort[region],
+		"redis_addr", c.Config().RedisAddr[region], "redis_port", c.Config().RedisPort[region],
 	)
 	return nil
 }

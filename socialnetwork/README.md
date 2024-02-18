@@ -52,7 +52,7 @@ gcloud config get-value project
    - `weaver-dsb-storage` (mongodb, rabbitmq w/ dashboard, redis and memcached):
      - targets: all instances in the network
      - source IPv4 ranges: `0.0.0.0/0`
-     - TCP ports: `27017,27018,15672,15673,5672,5673,6381,6382,6383,6384,11212,11213,11214`
+     - TCP ports: `27017,27018,15672,15673,5672,5673,6381,6382,6383,6384,6385,6386,6387,6388,11212,11213,11214,11215,11216,11217`
      - Priority: 100
    - `weaver-dsb-swarm`:
      - targets: all instances in the network
@@ -77,26 +77,37 @@ Fetch status from docker swarm and generate app weaver config `weaver-gcp.toml` 
 ./manager.py storage-info
 ```
 
-Deploy application using GKE:
-
+Build your application
 ``` zsh
 go generate
 go build
+```
+
+**[BUG]** before deploying application in GKE, deploy the application locally but connected to GCP storages to initialize and validate their connection, otherwise the GKE app won't be able to connect later to these storages
+``` zsh
+weaver weaver multi deploy weaver-gcp.toml
+```
+
+Deploy application using GKE:
+
+``` zsh
 weaver gke deploy weaver-gcp.toml
 ```
 
-**[NOTE]** if you want to test the application locally with storages deployed in GCP use `weaver multi deploy weaver-gcp.toml` instead
-
-Init social graph:
+**[OPTIONAL]** Init social graph (not necessary for running workload to compose posts) by providing the load balance address that is displayed after running `weaver gke deploy weaver-gcp.toml`:
 
 ``` zsh
-./manager.py init-social-graph
+./manager.py init-social-graph wrk2 --address GKE_LOAD_BALANCER_ADDRESS
 ```
 
-Run benchmark:
+Run benchmark by providing the load balance address that is displayed after running `weaver gke deploy weaver-gcp.toml`:
 
 ``` zsh
-./manager.py wrk2
+./manager.py wrk2 --address GKE_LOAD_BALANCER_ADDRESS
+
+# if you want to specify your own workload parameters
+# by default, params are 2 threads, 4 clients, 5 duration (seconds), 50 rate (requests/second)
+./manager.py wrk2 --address GKE_LOAD_BALANCER_ADDRESS -t THREADS -c CLIENTS -d DURATION -r RATE
 ```
 
 Gather metrics:
@@ -104,15 +115,21 @@ Gather metrics:
 ./manager.py metrics
 ```
 
-Clean at the end:
+Terminate storage at the end:
 
 ``` zsh
 ./manager.py storage-clean
 ```
 
+Kill app at the end:
+``` zsh
+weaver gke kill socialnetwork
+```
+
 [**OPTIONAL**] to avoid daily google cloud billings, purge all GCP GKE resources:
 ``` zsh
 weaver gke purge --force
+```
 
 ## LOCAL Deployment
 

@@ -108,7 +108,7 @@ services:
   # CACHE: MEMCACHED
   # ----------------
   post-storage-memcached-eu:
-    image: memcached
+    image: memcached:1.6.23
     hostname: post-storage-memcached-eu
     command: memcached -m 1024
     ports:
@@ -119,21 +119,20 @@ services:
         constraints: [node.hostname == weaver-dsb-db-eu]
     networks:
       - deathstarbench_network
-  #post-storage-memcached-us:
-  #  image: redis:7.2.4
-  #  hostname: post-storage-memcached-eu
-  #  command: memcached -m 1024
-  #  ports:
-  #    - 11215:11211
-  #  command: 'redis-server --slaveof post-storage-memcached-eu 6379 --replica-read-only no'
-  #  restart: 'no'
-  #  deploy:
-  #    placement:
-  #      constraints: [node.hostname == weaver-dsb-db-eu]
-  #  networks:
-  #    - deathstarbench_network
+  post-storage-memcached-us:
+    image: memcached:1.6.23
+    hostname: post-storage-memcached-eu
+    command: memcached -m 1024
+    ports:
+      - 11215:11211
+    restart: 'no'
+    deploy:
+      placement:
+        constraints: [node.hostname == weaver-dsb-db-eu]
+    networks:
+      - deathstarbench_network
   url-shorten-memcached-eu:
-    image: memcached
+    image: memcached:1.6.23
     hostname: url-shorten-memcached-eu
     command: memcached -m 1024
     ports:
@@ -144,21 +143,20 @@ services:
         constraints: [node.hostname == weaver-dsb-db-eu]
     networks:
       - deathstarbench_network
-  #url-shorten-memcached-us:
-  #  image: redis:7.2.4
-  #  hostname: url-shorten-memcached-us
-  #  command: memcached -m 1024
-  #  ports:
-  #    - 11216:11211
-  #  command: 'redis-server --slaveof url-shorten-memcached-eu 6379 --replica-read-only no'
-  #  restart: 'no'
-  #  deploy:
-  #    placement:
-  #      constraints: [node.hostname == weaver-dsb-db-us]
-  #  networks:
-  #    - deathstarbench_network
+  url-shorten-memcached-us:
+    image: memcached:1.6.23
+    hostname: url-shorten-memcached-us
+    command: memcached -m 1024
+    ports:
+    - 11216:11211
+    restart: 'no'
+    deploy:
+      placement:
+        constraints: [node.hostname == weaver-dsb-db-us]
+    networks:
+      - deathstarbench_network
   user-memcached-eu:
-    image: memcached
+    image: memcached:1.6.23
     hostname: user-memcached-eu
     command: memcached -m 1024
     ports:
@@ -169,18 +167,18 @@ services:
         constraints: [node.hostname == weaver-dsb-db-eu]
     networks:
       - deathstarbench_network
-  #user-memcached-us:
-  #  image: memcached
-  #  hostname: user-memcached-us
-  #  ports:
-  #    - 11217:11211
-  #  command: 'redis-server --slaveof user-memcached-eu 6379 --replica-read-only no'
-  #  restart: 'no'
-  #  deploy:
-  #    placement:
-  #      constraints: [node.hostname == weaver-dsb-db-us]
-  #  networks:
-  #    - deathstarbench_network
+  user-memcached-us:
+    image: memcached:1.6.23
+    hostname: user-memcached-us
+    command: memcached -m 1024
+    ports:
+      - 11217:11211
+    restart: 'no'
+    deploy:
+      placement:
+        constraints: [node.hostname == weaver-dsb-db-us]
+    networks:
+      - deathstarbench_network
 
   # ------------------
   # DATABASE: MONGODB

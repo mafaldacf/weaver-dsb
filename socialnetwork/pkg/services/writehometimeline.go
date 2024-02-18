@@ -30,9 +30,9 @@ type writeHomeTimelineServiceOptions struct {
 	RabbitMQAddr map[string]string `toml:"rabbitmq_address"`
 	MongoDBAddr  map[string]string `toml:"mongodb_address"`
 	RedisAddr    map[string]string `toml:"redis_address"`
-	RabbitMQPort int               `toml:"rabbitmq_port"`
-	MongoDBPort  int               `toml:"mongodb_port"`
-	RedisPort    int               `toml:"redis_port"`
+	RabbitMQPort map[string]int    `toml:"rabbitmq_port"`
+	MongoDBPort  map[string]int    `toml:"mongodb_port"`
+	RedisPort    map[string]int    `toml:"redis_port"`
 	NumWorkers   int               `toml:"num_workers"`
 	Region       string            `toml:"region"`
 }
@@ -55,12 +55,12 @@ func (w *writeHomeTimelineService) Init(ctx context.Context) error {
 	}
 	w.Config().Region = region
 
-	w.mongoClient, err = storage.MongoDBClient(ctx, w.Config().MongoDBAddr[region], w.Config().MongoDBPort)
+	w.mongoClient, err = storage.MongoDBClient(ctx, w.Config().MongoDBAddr[region], w.Config().MongoDBPort[region])
 	if err != nil {
 		logger.Error(err.Error())
 		return err
 	}
-	w.redisClient = storage.RedisClient(w.Config().RedisAddr[region], w.Config().RedisPort)
+	w.redisClient = storage.RedisClient(w.Config().RedisAddr[region], w.Config().RedisPort[region])
 
 	var wg sync.WaitGroup
 	wg.Add(w.Config().NumWorkers)
@@ -73,9 +73,9 @@ func (w *writeHomeTimelineService) Init(ctx context.Context) error {
 	}
 
 	logger.Info("write home timeline service running!", "region", w.Config().Region, "n_workers", w.Config().NumWorkers,
-		"rabbitmq_addr", w.Config().RabbitMQAddr[region], "rabbitmq_port", w.Config().RabbitMQPort,
-		"mongodb_addr", w.Config().MongoDBAddr[region], "mongodb_port", w.Config().MongoDBPort,
-		"redis_addr", w.Config().RedisAddr[region], "redis_port", w.Config().RedisPort,
+		"rabbitmq_addr", w.Config().RabbitMQAddr[region], "rabbitmq_port", w.Config().RabbitMQPort[region],
+		"mongodb_addr", w.Config().MongoDBAddr[region], "mongodb_port", w.Config().MongoDBPort[region],
+		"redis_addr", w.Config().RedisAddr[region], "redis_port", w.Config().RedisPort[region],
 	)
 	wg.Wait()
 	return nil
@@ -182,7 +182,7 @@ func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []
 func (w *writeHomeTimelineService) workerThread(ctx context.Context) error {
 	logger := w.Logger(ctx)
 
-	ch, conn, err := storage.RabbitMQClient(ctx, w.Config().RabbitMQAddr[w.Config().Region], w.Config().RabbitMQPort)
+	ch, conn, err := storage.RabbitMQClient(ctx, w.Config().RabbitMQAddr[w.Config().Region], w.Config().RabbitMQPort[w.Config().Region])
 	if err != nil {
 		logger.Error(err.Error())
 		return err

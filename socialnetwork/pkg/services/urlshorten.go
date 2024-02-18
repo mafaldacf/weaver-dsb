@@ -32,8 +32,8 @@ type urlShortenService struct {
 type urlShortenServiceOptions struct {
 	MongoDBAddr 	map[string]string 	`toml:"mongodb_address"`
 	MemCachedAddr 	map[string]string 	`toml:"memcached_address"`
-	MongoDBPort 	int    				`toml:"mongodb_port"`
-	MemCachedPort 	int    				`toml:"memcached_port"`
+	MongoDBPort 	map[string]int    	`toml:"mongodb_port"`
+	MemCachedPort 	map[string]int    	`toml:"memcached_port"`
 	Region 			string
 }
 
@@ -55,16 +55,16 @@ func (u *urlShortenService) Init(ctx context.Context) error {
 	}
 	u.Config().Region = region
 
-	u.mongoClient, err = storage.MongoDBClient(ctx, u.Config().MongoDBAddr[region], u.Config().MongoDBPort)
+	u.mongoClient, err = storage.MongoDBClient(ctx, u.Config().MongoDBAddr[region], u.Config().MongoDBPort[region])
 	if err != nil {
 		logger.Error(err.Error())
 		return err
 	}
 
-	u.memCachedClient = storage.MemCachedClient(u.Config().MemCachedAddr[region], u.Config().MemCachedPort)
+	u.memCachedClient = storage.MemCachedClient(u.Config().MemCachedAddr[region], u.Config().MemCachedPort[region])
 	logger.Info("url shorten service running!", "region", u.Config().Region,
-		"mongodb_addr", u.Config().MongoDBAddr[region], "mongodb_port", u.Config().MongoDBPort,
-		"memcached_addr", u.Config().MemCachedAddr[region], "memcached_port", u.Config().MemCachedPort,
+		"mongodb_addr", u.Config().MongoDBAddr[region], "mongodb_port", u.Config().MongoDBPort[region],
+		"memcached_addr", u.Config().MemCachedAddr[region], "memcached_port", u.Config().MemCachedPort[region],
 	)
 	return nil
 }

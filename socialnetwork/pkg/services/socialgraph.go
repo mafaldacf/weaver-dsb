@@ -36,8 +36,8 @@ type socialGraphService struct {
 type socialGraphServiceOptions struct {
 	MongoDBAddr map[string]string 	`toml:"mongodb_address"`
 	RedisAddr   map[string]string 	`toml:"redis_address"`
-	MongoDBPort int    				`toml:"mongodb_port"`
-	RedisPort   int    				`toml:"redis_port"`
+	MongoDBPort map[string]int    	`toml:"mongodb_port"`
+	RedisPort   map[string]int    	`toml:"redis_port"`
 	Region 	 	string
 }
 
@@ -67,17 +67,17 @@ func (s *socialGraphService) Init(ctx context.Context) error {
 	}
 	s.Config().Region = region
 
-	s.mongoClient, err = storage.MongoDBClient(ctx, s.Config().MongoDBAddr[region], s.Config().MongoDBPort)
+	s.mongoClient, err = storage.MongoDBClient(ctx, s.Config().MongoDBAddr[region], s.Config().MongoDBPort[region])
 	if err != nil {
 		logger.Error(err.Error())
 		return err
 	}
 
-	s.redisClient = storage.RedisClient(s.Config().RedisAddr[region], s.Config().RedisPort)
+	s.redisClient = storage.RedisClient(s.Config().RedisAddr[region], s.Config().RedisPort[region])
 
 	logger.Info("social graph service running!", "region", s.Config().Region,
-		"mongodb_addr", s.Config().MongoDBAddr[region], "mongodb_port", s.Config().MongoDBPort,
-		"redis_addr", s.Config().RedisAddr[region], "redis_port", s.Config().RedisPort,
+		"mongodb_addr", s.Config().MongoDBAddr[region], "mongodb_port", s.Config().MongoDBPort[region],
+		"redis_addr", s.Config().RedisAddr[region], "redis_port", s.Config().RedisPort[region],
 	)
 	return nil
 }

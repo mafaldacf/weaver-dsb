@@ -24,8 +24,8 @@ type UserTimelineService interface {
 type userTimelineServiceOptions struct {
 	MongoDBAddr map[string]string 	`toml:"mongodb_address"`
 	RedisAddr   map[string]string 	`toml:"redis_address"`
-	MongoDBPort int    				`toml:"mongodb_port"`
-	RedisPort   int    				`toml:"redis_port"`
+	MongoDBPort map[string]int    	`toml:"mongodb_port"`
+	RedisPort   map[string]int    	`toml:"redis_port"`
 	Region 		string
 }
 
@@ -47,15 +47,16 @@ func (u *userTimelineService) Init(ctx context.Context) error {
 	}
 	u.Config().Region = region
 
-	u.mongoClient, err = storage.MongoDBClient(ctx, u.Config().MongoDBAddr[region], u.Config().MongoDBPort)
+	u.mongoClient, err = storage.MongoDBClient(ctx, u.Config().MongoDBAddr[region], u.Config().MongoDBPort[region])
 	if err != nil {
 		logger.Error(err.Error())
 		return err
 	}
 
-	u.redisClient = storage.RedisClient(u.Config().RedisAddr[region], u.Config().RedisPort)
+	u.redisClient = storage.RedisClient(u.Config().RedisAddr[region], u.Config().RedisPort[region])
 	logger.Info("user timeline service running!", "region", u.Config().Region,
-		"mongodb_addr", u.Config().MongoDBAddr[region], "mongodb_port", u.Config().MongoDBPort,
+		"mongodb_addr", u.Config().MongoDBAddr[region], "mongodb_port", u.Config().MongoDBPort[region],
+		"redis_addr", u.Config().RedisAddr[region], "redis_port", u.Config().RedisPort[region],
 	)
 	return nil
 }

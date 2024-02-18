@@ -25,7 +25,7 @@ type homeTimelineService struct {
 
 type homeTimelineServiceOptions struct {
 	RedisAddr map[string]string `toml:"redis_address"`
-	RedisPort int               `toml:"redis_port"`
+	RedisPort map[string]int    `toml:"redis_port"`
 	Region    string
 }
 
@@ -37,9 +37,9 @@ func (h *homeTimelineService) Init(ctx context.Context) error {
 		return err
 	}
 	h.Config().Region = region
-	h.redisClient = storage.RedisClient(h.Config().RedisAddr[region], h.Config().RedisPort)
+	h.redisClient = storage.RedisClient(h.Config().RedisAddr[region], h.Config().RedisPort[region])
 	logger.Info("home timeline service running!", "region", h.Config().Region,
-		"rabbitmq_addr", h.Config().RedisAddr[region], "rabbitmq_port", h.Config().RedisPort,
+		"rabbitmq_addr", h.Config().RedisAddr[region], "rabbitmq_port", h.Config().RedisPort[region],
 	)
 	return nil
 }
