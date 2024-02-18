@@ -13,6 +13,7 @@ import yaml
 from time import sleep
 from tqdm import tqdm
 
+APP_PORT = 9000
 NUMBER_DOCKER_SWARM_SERVICE = 13
 NUMBER_DOCKER_SWARM_NODES   = 3
 # -----------
@@ -43,7 +44,7 @@ credentials = service_account.Credentials.from_service_account_file("gcp/credent
 compute = googleapiclient.discovery.build('compute', 'v1', credentials=credentials)
 
 # --------------------
-# GCP
+# Helpers
 # --------------------
 
 def get_instance_ips(instance_name, zone):
@@ -51,6 +52,16 @@ def get_instance_ips(instance_name, zone):
   network_interface = instance['networkInterfaces'][0]
   # public, private
   return network_interface['accessConfigs'][0]['natIP'], network_interface['networkIP']
+
+def run_workload(url, threads, conns, duration, rate):
+  from plumbum import local
+  with local.env(HOST_EU=url, HOST_US=url):
+    wrk2 = local['./wrk2/wrk']
+    wrk2['-D', 'exp', '-t', str(threads), '-c', str(conns), '-d', str(duration), '-L', '-s', './wrk2/scripts/social-network/compose-post.lua', f'{url}/wrk2-api/post/compose', '-R', str(rate)] & FG
+
+# --------------------
+# GCP
+# --------------------
 
 def storage_start():
   from plumbum.cmd import gcloud
@@ -145,7 +156,7 @@ def storage_deploy():
   from plumbum.cmd import gcloud
 
   mkdir['-p', f'tmp/{APP_FOLDER_NAME}'] & FG
-  cp['-r', 'docker-compose.yml', 'docker', 'config', APP_FOLDER_NAME] & FG
+  cp['-r', 'docker-compose.yml', 'docker', 'config', f'tmp/{APP_FOLDER_NAME}'] & FG
   gsutil['cp', '-r', f'tmp/{APP_FOLDER_NAME}', f'gs://{GCP_CLOUD_STORAGE_BUCKET_NAME}/'] & FG
   rm['-r', 'tmp'] & FG
 
@@ -188,13 +199,12 @@ def storage_clean():
   terraform['-chdir=./terraform', 'destroy'] & FG
 
 def init_social_graph(address):
-  #TODO
   pass
 
-def wrk2():
-  #TODO
-  pass
-
+#./manager.py wrk2 --local -t 2 -c 4 -d 5 -r 50
+def wrk2(address, threads=4, conns=2, duration=5, rate=50):
+  run_workload(f"http://{address}", threads, conns, duration, rate)
+  
 # METRICS FORMAT
 #╭────────────────────────────────────────────────────────────────────────╮
 #│ // The number of composed posts                                        │
@@ -219,6 +229,7 @@ def wrk2():
 #╰───────────────────┴────────────────────┴───────────────────────┴───────╯
 
 def metrics(deployment_type='gke'):
+  import datetime
   from plumbum.cmd import weaver
   import re
 
@@ -247,29 +258,30 @@ def metrics(deployment_type='gke'):
   write_post_duration_avg_ms = "{:.4f}".format(write_post_duration_avg_ms)
   queue_duration_avg_ms = "{:.4f}".format(queue_duration_avg_ms)
 
-  print(f"# composed posts:\t\t{composed_posts_count}")
-  print(f"# received notifications:\t{composed_posts_count} ({pc_received_notifications}%)")
-  print(f"# inconsistencies:\t\t{inconsistencies_count}")
-  print(f"% inconsistencies:\t\t{pc_inconsistencies}%")
-  print(f"% avg. compose post duration:\t{compose_post_duration_avg_ms}ms")
-  print(f"% avg. write post duration:\t{write_post_duration_avg_ms}ms")
-  print(f"% avg. queue duration:\t\t{queue_duration_avg_ms}ms")
+  eval_folder = 'local' if deployment_type == 'multi' else 'gke'
+  current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+  eval_filename = f"evaluation/{eval_folder}/{current_time}.txt"
+  with open(eval_filename, "w") as f:
+    f.write(f"# composed posts:\t\t\t\t{composed_posts_count}\n")
+    f.write(f"# received notifications:\t\t{composed_posts_count} ({pc_received_notifications}%)\n")
+    f.write(f"# inconsistencies:\t\t\t\t{inconsistencies_count}\n")
+    f.write(f"% inconsistencies:\t\t\t\t{pc_inconsistencies}%\n")
+    f.write(f"% avg. compose post duration:\t{compose_post_duration_avg_ms}ms\n")
+    f.write(f"% avg. write post duration:\t\t{write_post_duration_avg_ms}ms\n")
+    f.write(f"% avg. queue duration:\t\t\t{queue_duration_avg_ms}ms\n")
 
 # --------------------
 # LOCAL
 # --------------------
 
-def local_init_social_graph():
+def local_init_social_graph(address):
   from plumbum import local
-  with local.env(HOST_EU="http://localhost:9000", HOST_US="http://localhost:9000"):
+  with local.env(HOST_EU=f"http://{address}:{APP_PORT}", HOST_US=f"http://{address}:{APP_PORT}"):
     local['./scripts/init_social_graph.py'] & FG
 
 #./manager.py wrk2 --local -t 2 -c 4 -d 5 -r 50
-def local_wrk2(threads=4, conns=2, duration=5, reqs=50):
-  from plumbum import local
-  with local.env(HOST_EU="http://localhost:8000", HOST_US="http://localhost:8000"):
-      wrk2 = local['./wrk2/wrk']
-      wrk2['-D', 'exp', '-t', str(threads), '-c', str(conns), '-d', str(duration), '-L', '-s', './wrk2/scripts/social-network/compose-post.lua', 'http://localhost:8000/wrk2-api/post/compose', '-R', str(reqs)] & FG
+def local_wrk2(address="localhost", threads=4, conns=2, duration=5, rate=50):
+  run_workload(f"http://{address}:{APP_PORT}", threads, conns, duration, rate)
 
 def local_metrics():
   metrics('multi')
@@ -306,8 +318,10 @@ if __name__ == "__main__":
       parser.add_argument('-t', '--threads', default=1, help="Number of threads")
       parser.add_argument('-c', '--conns', default=1, help="Number of connections")
       parser.add_argument('-d', '--duration', default=1, help="Duration")
-      parser.add_argument('-r', '--reqs', default=1, help="Number of requests per second")
-
+      parser.add_argument('-r', '--rate', default=1, help="Number of requests per second")
+    if cmd in ['init-social-graph', 'wrk2']:
+      parser.add_argument('-a', '--address', default="localhost", help="Address of GKE load balancer")
+      
   args = vars(main_parser.parse_args())
   command = args.pop('command').replace('-', '_')
   local = args.pop('local')

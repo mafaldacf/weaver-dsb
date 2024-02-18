@@ -199,6 +199,8 @@ func (c *composePostService) composeAndUpload(ctx context.Context, reqID int64) 
 	logger := c.Logger(ctx)
 	logger.Debug("entering composeAndUpload", "reqid", reqID)
 
+	sn_metrics.ClientRequest.Get(sn_metrics.ClientRequestLabels{Region: c.Config().Region}).Add(1)
+
 	var text string
 	var creator model.Creator
 	var medias []model.Media

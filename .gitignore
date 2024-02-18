@@ -19,3 +19,5 @@ socialnetwork/weaver-gcp.toml
 socialnetwork/.TODO
 socialnetwork/data/*
 socialnetwork/metrics.txt
+socialnetwork/evaluation/gke/*.txt
+socialnetwork/evaluation/local/*.txt

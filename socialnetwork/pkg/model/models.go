@@ -5,6 +5,7 @@ import (
 
 	sn_trace "socialnetwork/pkg/trace"
 )
+
 type Message struct {
 	weaver.AutoMarshal
 	ReqID          int64       			 `json:"req_id"`

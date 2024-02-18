@@ -2,7 +2,16 @@ package metrics
 
 import "github.com/ServiceWeaver/weaver/metrics"
 
+type ClientRequestLabels struct {
+    Region string
+}
+
 var (
+	ClientRequest = metrics.NewCounterMap[ClientRequestLabels](
+		"sn_client_request",
+		"Number of client requests received at EU or US",
+	)
+
 	// wrk2 api
 	ComposePostDuration = metrics.NewHistogram(
 		"sn_compose_post_duration_ms",
