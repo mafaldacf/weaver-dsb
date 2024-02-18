@@ -315,7 +315,8 @@ func (c *composePostService) uploadHomeTimelineHelper(ctx context.Context, reqID
 	err := c.amqChannel.ExchangeDeclare("write-home-timeline", "topic", false, false, false, false, nil)
 	if err != nil {
 		logger.Error("error declaring exchange for rabbitmq", "msg", err.Error())
-		return err
+		// errors close the channel so we force the service to restart
+		panic(err)
 	}
 
 	spanContext := trace.SpanContextFromContext(ctx)

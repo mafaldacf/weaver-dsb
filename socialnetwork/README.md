@@ -100,7 +100,7 @@ weaver gke deploy weaver-gcp.toml
 ./manager.py init-social-graph wrk2 --address GKE_LOAD_BALANCER_ADDRESS
 ```
 
-Run benchmark by providing the load balance address that is displayed after running `weaver gke deploy weaver-gcp.toml`:
+Run benchmark and obtain metrics by providing the load balance address that is displayed after running `weaver gke deploy weaver-gcp.toml`:
 
 ``` zsh
 ./manager.py wrk2 --address GKE_LOAD_BALANCER_ADDRESS
@@ -110,7 +110,7 @@ Run benchmark by providing the load balance address that is displayed after runn
 ./manager.py wrk2 --address GKE_LOAD_BALANCER_ADDRESS -t THREADS -c CLIENTS -d DURATION -r RATE
 ```
 
-Gather metrics:
+Print metrics (same as gathered in previous workload):
 ``` zsh
 ./manager.py metrics
 ```

@@ -2,16 +2,13 @@
 import argparse
 import googleapiclient.discovery
 from google.oauth2 import service_account
-import time
 import sys
 from plumbum import FG
-import requests
-from bs4 import BeautifulSoup
-import re
 import toml
 import yaml
 from time import sleep
 from tqdm import tqdm
+import datetime
 
 APP_PORT = 9000
 NUMBER_DOCKER_SWARM_SERVICE = 13
@@ -53,12 +50,31 @@ def get_instance_ips(instance_name, zone):
   # public, private
   return network_interface['accessConfigs'][0]['natIP'], network_interface['networkIP']
 
-def run_workload(url, threads, conns, duration, rate):
+def run_workload(timestamp, deployment, url, threads, conns, duration, rate):
+  import threading
+
+  def tqdm_progress(duration):
+      print(f"[INFO] running workload for {duration} seconds...")
+      for _ in tqdm(range(int(duration))):
+          sleep(1)
+
+  progress_thread = threading.Thread(target=tqdm_progress, args=(duration,))
+  progress_thread.start()
+
   from plumbum import local
   with local.env(HOST_EU=url, HOST_US=url):
     wrk2 = local['./wrk2/wrk']
-    wrk2['-D', 'exp', '-t', str(threads), '-c', str(conns), '-d', str(duration), '-L', '-s', './wrk2/scripts/social-network/compose-post.lua', f'{url}/wrk2-api/post/compose', '-R', str(rate)] & FG
+    output = wrk2['-D', 'exp', '-t', str(threads), '-c', str(conns), '-d', str(duration), '-L', '-s', './wrk2/scripts/social-network/compose-post.lua', f'{url}/wrk2-api/post/compose', '-R', str(rate)]()
+  
+    filepath = f"evaluation/{deployment}/{timestamp}_workload.txt"
+    with open(filepath, "w") as f:
+      f.write(output)
 
+    print(output)
+    print(f"[INFO] workload results saved at {filepath}")
+
+  progress_thread.join()
+  return output
 # --------------------
 # GCP
 # --------------------
@@ -203,7 +219,9 @@ def init_social_graph(address):
 
 #./manager.py wrk2 --local -t 2 -c 4 -d 5 -r 50
 def wrk2(address, threads=4, conns=2, duration=5, rate=50):
-  run_workload(f"http://{address}", threads, conns, duration, rate)
+  timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+  run_workload(timestamp, 'gke', f"http://{address}", threads, conns, duration, rate)
+  metrics('gke', timestamp)
   
 # METRICS FORMAT
 #╭────────────────────────────────────────────────────────────────────────╮
@@ -228,8 +246,7 @@ def wrk2(address, threads=4, conns=2, duration=5, rate=50):
 #|  ...              | ...                | ...                   | ...   |
 #╰───────────────────┴────────────────────┴───────────────────────┴───────╯
 
-def metrics(deployment_type='gke'):
-  import datetime
+def metrics(deployment_type='gke', timestamp=None):
   from plumbum.cmd import weaver
   import re
 
@@ -258,17 +275,25 @@ def metrics(deployment_type='gke'):
   write_post_duration_avg_ms = "{:.4f}".format(write_post_duration_avg_ms)
   queue_duration_avg_ms = "{:.4f}".format(queue_duration_avg_ms)
 
-  eval_folder = 'local' if deployment_type == 'multi' else 'gke'
-  current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-  eval_filename = f"evaluation/{eval_folder}/{current_time}.txt"
-  with open(eval_filename, "w") as f:
-    f.write(f"# composed posts:\t\t\t\t{composed_posts_count}\n")
-    f.write(f"# received notifications:\t\t{composed_posts_count} ({pc_received_notifications}%)\n")
-    f.write(f"# inconsistencies:\t\t\t\t{inconsistencies_count}\n")
-    f.write(f"% inconsistencies:\t\t\t\t{pc_inconsistencies}%\n")
-    f.write(f"% avg. compose post duration:\t{compose_post_duration_avg_ms}ms\n")
-    f.write(f"% avg. write post duration:\t\t{write_post_duration_avg_ms}ms\n")
-    f.write(f"% avg. queue duration:\t\t\t{queue_duration_avg_ms}ms\n")
+  results = f"""
+    # composed posts:\t\t\t{composed_posts_count}
+    # received notifications:\t\t{composed_posts_count} ({pc_received_notifications}%)
+    # inconsistencies:\t\t\t{inconsistencies_count}
+    % inconsistencies:\t\t\t{pc_inconsistencies}%
+    % avg. compose post duration:\t{compose_post_duration_avg_ms}ms
+    % avg. write post duration:\t\t{write_post_duration_avg_ms}ms
+    % avg. queue duration:\t\t{queue_duration_avg_ms}ms
+  """
+  print(results)
+
+  # save file if we ran workload
+  if timestamp:
+    eval_folder = 'local' if deployment_type == 'multi' else 'gke'
+    filepath = f"evaluation/{eval_folder}/{timestamp}_metrics.txt"
+    with open(filepath, "w") as f:
+      f.write(results)
+    print(f"[INFO] evaluation results saved at {filepath}")
+
 
 # --------------------
 # LOCAL
@@ -281,7 +306,9 @@ def local_init_social_graph(address):
 
 #./manager.py wrk2 --local -t 2 -c 4 -d 5 -r 50
 def local_wrk2(address="localhost", threads=4, conns=2, duration=5, rate=50):
-  run_workload(f"http://{address}:{APP_PORT}", threads, conns, duration, rate)
+  timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+  run_workload(timestamp, 'local', f"http://{address}:{APP_PORT}", threads, conns, duration, rate)
+  metrics('multi', timestamp)
 
 def local_metrics():
   metrics('multi')
