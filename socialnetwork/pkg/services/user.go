@@ -21,9 +21,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// Custom Epoch (January 1, 2018 Midnight GMT = 2018-01-01T00:00:00Z)
-const USER_CUSTOM_EPOCH int64 = 1514764800000
-
 type UserService interface {
 	Login(ctx context.Context, reqID int64, username string, password string) (string, error)
 	RegisterUserWithId(ctx context.Context, reqID int64, firstName string, lastName string, username string, password string, userID int64) error
@@ -110,7 +107,7 @@ func (u *userService) Init(ctx context.Context) error {
 	}
 	u.Config().Region = region
 
-	u.machineID = "0" //FIXME
+	u.machineID = utils.GetMachineID()
 	u.currentTimestamp = -1
 	u.counter = 0
 	u.mongoClient, err = storage.MongoDBClient(ctx, u.Config().MongoDBAddr[region], u.Config().MongoDBPort)
@@ -123,6 +120,7 @@ func (u *userService) Init(ctx context.Context) error {
 	logger.Info("user service running!", "region", u.Config().Region,
 		"mongodb_addr", u.Config().MongoDBAddr[region], "mongodb_port", u.Config().MongoDBPort,
 		"memcached_addr", u.Config().MemCachedAddr[region], "memcached_port", u.Config().MemCachedPort,
+		"machine_id", u.machineID,
 	)
 	return nil
 }
@@ -247,7 +245,7 @@ func (u *userService) RegisterUser(ctx context.Context, reqID int64, firstName s
 	logger := u.Logger(ctx)
 	logger.Debug("entering RegisterUser", "req_id", reqID, "first_name", firstName, "last_name", lastName, "username", username, "password", password)
 
-	timestamp := time.Now().UnixMilli() - USER_CUSTOM_EPOCH
+	timestamp := time.Now().UnixMilli() - utils.CUSTOM_EPOCH
 	counter, err := u.getCounter(timestamp)
 	if err != nil {
 		logger.Error("error getting counter", "msg", err.Error())

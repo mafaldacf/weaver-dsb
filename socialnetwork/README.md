@@ -217,8 +217,8 @@ OR
 curl -X POST "localhost:9000/wrk2-api/user/follow" -d "user_name=USER_NAME&followee_name=FOLLOWEE_AME"
 
 # e.g.
-curl -X POST "localhost:9000/wrk2-api/user/follow" -d "user_id=1&followee_id=0"
 curl -X POST "localhost:9000/wrk2-api/user/follow" -d "user_name=ana&followee_name=bob"
+curl -X POST "localhost:9000/wrk2-api/user/follow" -d "user_id=1&followee_id=0"
 ```
 
 **Unfollow User**: [{user_id, followee_id}, {username, followee_name}]

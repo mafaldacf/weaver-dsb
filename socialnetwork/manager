@@ -187,10 +187,12 @@ def storage_clean():
   from plumbum.cmd import terraform
   terraform['-chdir=./terraform', 'destroy'] & FG
 
-def init_social_graph():
+def init_social_graph(address):
+  #TODO
   pass
 
 def wrk2():
+  #TODO
   pass
 
 # METRICS FORMAT
