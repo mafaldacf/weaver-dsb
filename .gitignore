@@ -17,3 +17,5 @@ socialnetwork/wrk2/deps/luajit/src/luajit
 socialnetwork/terraform/.terraform.tfstate.lock.info
 socialnetwork/weaver-gcp.toml
 socialnetwork/.TODO
+socialnetwork/data/*
+socialnetwork/metrics.txt

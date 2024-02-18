@@ -222,21 +222,38 @@ def metrics(deployment_type='gke'):
   from plumbum.cmd import weaver
   import re
 
-  pattern = re.compile(r'^.*│.*│.*│.*│\s*(\d+)\s*│.*$', re.MULTILINE)
+  pattern = re.compile(r'^.*│.*│.*│.*│\s*(\d+\.?\d*)\s*│.*$', re.MULTILINE)
 
-  metrics_composed_posts = weaver[deployment_type, 'metrics', 'composed_posts']()
-  values = pattern.findall(metrics_composed_posts)
-  num_composed_posts = sum(int(value) for value in values)
+  # wkr2 api
+  compose_post_duration_metrics = weaver[deployment_type, 'metrics', 'sn_compose_post_duration_ms']()
+  compose_post_duration_avg_ms = sum(float(value) for value in pattern.findall(compose_post_duration_metrics))
+  # compose post service
+  composed_posts_metrics = weaver[deployment_type, 'metrics', 'sn_composed_posts']()
+  composed_posts_count = sum(int(value) for value in pattern.findall(composed_posts_metrics))
+  # post storage service
+  write_post_duration_metrics = weaver[deployment_type, 'metrics', 'sn_write_post_duration_ms']()
+  write_post_duration_avg_ms = sum(float(value) for value in pattern.findall(write_post_duration_metrics))
+  # write home timeline service
+  queue_duration_metrics = weaver[deployment_type, 'metrics', 'sn_queue_duration_ms']()
+  queue_duration_avg_ms = sum(float(value) for value in pattern.findall(queue_duration_metrics))
+  received_notifications_metrics = weaver[deployment_type, 'metrics', 'sn_received_notifications']()
+  received_notifications_count = sum(int(value) for value in pattern.findall(received_notifications_metrics))
+  inconsitencies_metrics = weaver[deployment_type, 'metrics', 'sn_inconsistencies']()
+  inconsistencies_count = sum(int(value) for value in pattern.findall(inconsitencies_metrics))
 
-  metrics_inconsistencies = weaver[deployment_type, 'metrics', 'inconsistencies']()
-  values = pattern.findall(metrics_inconsistencies)
-  num_inconsistencies = sum(int(value) for value in values)
+  pc_inconsistencies = "{:.2f}".format((inconsistencies_count / composed_posts_count) * 100)
+  pc_received_notifications = "{:.2f}".format((received_notifications_count / composed_posts_count) * 100)
+  compose_post_duration_avg_ms = "{:.4f}".format(compose_post_duration_avg_ms)
+  write_post_duration_avg_ms = "{:.4f}".format(write_post_duration_avg_ms)
+  queue_duration_avg_ms = "{:.4f}".format(queue_duration_avg_ms)
 
-  pc_inconsistencies = "{:.2f}".format((num_inconsistencies / num_composed_posts) * 100)
-
-  print("# composed posts:\t", num_composed_posts)
-  print("# inconsistencies:\t", num_inconsistencies)
-  print("% inconsistencies:\t", pc_inconsistencies)
+  print(f"# composed posts:\t\t{composed_posts_count}")
+  print(f"# received notifications:\t{composed_posts_count} ({pc_received_notifications}%)")
+  print(f"# inconsistencies:\t\t{inconsistencies_count}")
+  print(f"% inconsistencies:\t\t{pc_inconsistencies}%")
+  print(f"% avg. compose post duration:\t{compose_post_duration_avg_ms}ms")
+  print(f"% avg. write post duration:\t{write_post_duration_avg_ms}ms")
+  print(f"% avg. queue duration:\t\t{queue_duration_avg_ms}ms")
 
 # --------------------
 # LOCAL
@@ -244,15 +261,15 @@ def metrics(deployment_type='gke'):
 
 def local_init_social_graph():
   from plumbum import local
-  with local.env({"HOST_EU":"http://localhost:9000", "HOST_US":"http://localhost:9000"}):
+  with local.env(HOST_EU="http://localhost:9000", HOST_US="http://localhost:9000"):
     local['./scripts/init_social_graph.py'] & FG
 
-#./wrk2/wrk -D exp -t 1 -c 1 -d 1 -L -s ./scripts/social-network/compose-post.lua http://localhost:9000/wrk2-api/post/compose -R 1
-def local_wrk2(threads=1, conns=1, duration=1, reqs=1):
+#./manager.py wrk2 --local -t 2 -c 4 -d 5 -r 50
+def local_wrk2(threads=4, conns=2, duration=5, reqs=50):
   from plumbum import local
-  with local.env({"HOST_EU":"http://localhost:9000", "HOST_US":"http://localhost:9000"}):
+  with local.env(HOST_EU="http://localhost:8000", HOST_US="http://localhost:8000"):
       wrk2 = local['./wrk2/wrk']
-      wrk2['-D', 'exp', '-t', str(threads), '-c', str(conns), '-d', str(duration), '-L', '-s', './wrk2/scripts/social-network/compose-post.lua', 'http://localhost:9000/wrk2-api/post/compose', '-R', str(reqs)] & FG
+      wrk2['-D', 'exp', '-t', str(threads), '-c', str(conns), '-d', str(duration), '-L', '-s', './wrk2/scripts/social-network/compose-post.lua', 'http://localhost:8000/wrk2-api/post/compose', '-R', str(reqs)] & FG
 
 def local_metrics():
   metrics('multi')

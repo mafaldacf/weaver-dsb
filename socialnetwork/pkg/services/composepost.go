@@ -8,13 +8,13 @@ import (
 	"sync"
 	"time"
 
+	sn_metrics "socialnetwork/pkg/metrics"
 	"socialnetwork/pkg/model"
 	"socialnetwork/pkg/storage"
-	sntrace "socialnetwork/pkg/trace"
+	sn_trace "socialnetwork/pkg/trace"
 	"socialnetwork/pkg/utils"
 
 	"github.com/ServiceWeaver/weaver"
-	"github.com/ServiceWeaver/weaver/metrics"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/attribute"
@@ -53,12 +53,12 @@ type composePostServiceOptions struct {
 	Region       string
 }
 
-var (
-	composed_posts = metrics.NewCounter(
-		"composed_posts",
-		"The number of composed posts",
-	)
-)
+type MethodLabels struct {
+	Caller    string // full calling component name
+	Component string // full callee component name
+	Method    string // callee component method's name
+	Remote    bool   // Is this a remote call?
+}
 
 func (c *composePostService) Init(ctx context.Context) error {
 	logger := c.Logger(ctx)
@@ -284,7 +284,7 @@ func (c *composePostService) composeAndUpload(ctx context.Context, reqID int64) 
 	// --- Post Storage
 	logger.Debug("remotely calling PostStorageService")
 
-	composed_posts.Inc()
+	sn_metrics.ComposedPosts.Inc()
 
 	err := c.postStorageService.Get().StorePost(ctx, reqID, post)
 	if err != nil {
@@ -293,7 +293,6 @@ func (c *composePostService) composeAndUpload(ctx context.Context, reqID int64) 
 	}
 
 	trace.SpanFromContext(ctx).SetAttributes(
-		attribute.Int64("ts", timestamp),
 		attribute.Int64("post_id", postID),
 	)
 
@@ -324,12 +323,11 @@ func (c *composePostService) uploadHomeTimelineHelper(ctx context.Context, reqID
 		UserID:         userID,
 		Timestamp:      timestamp,
 		UserMentionIDs: userMentionIDs,
-		SpanContext:    sntrace.BuildSpanContext(spanContext),
+		// tracing
+		SpanContext: sn_trace.BuildSpanContext(spanContext),
+		// evaluation metrics
+		NotificationSendTs: time.Now().UnixMilli(),
 	}
-
-	trace.SpanFromContext(ctx).SetAttributes(
-		attribute.Int64("composepost_write_notification_ts", time.Now().UnixMilli()),
-	)
 
 	msgJSON, err := json.Marshal(msg)
 	if err != nil {

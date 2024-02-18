@@ -11,6 +11,7 @@ import (
 	"socialnetwork/pkg/model"
 	"socialnetwork/pkg/storage"
 	"socialnetwork/pkg/utils"
+	sn_metrics "socialnetwork/pkg/metrics"
 
 	"github.com/ServiceWeaver/weaver"
 	"github.com/bradfitz/gomemcache/memcache"
@@ -79,12 +80,15 @@ func (p *postStorageService) StorePost(ctx context.Context, reqID int64, post mo
 	trace.SpanFromContext(ctx).SetAttributes(
 		attribute.Int64("poststorage_write_post_ts", time.Now().UnixMilli()),
 	)
+	writePostStartMs := time.Now().UnixMilli()
 
 	collection := p.mongoClient.Database("post-storage").Collection("posts")
 	r, err := collection.InsertOne(ctx, post)
 	if err != nil {
 		logger.Error("error writing post", "msg", err.Error())
 	}
+
+	sn_metrics.WritePostDurationMs.Put(float64(time.Now().UnixMilli() - writePostStartMs))
 	logger.Debug("inserted post", "objectid", r.InsertedID)
 
 	return nil

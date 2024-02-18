@@ -3,17 +3,19 @@ package model
 import (
 	"github.com/ServiceWeaver/weaver"
 
-	"socialnetwork/pkg/trace"
+	sn_trace "socialnetwork/pkg/trace"
 )
-
 type Message struct {
 	weaver.AutoMarshal
-	ReqID          int64       			`json:"req_id"`
-	UserID         int64       			`json:"user_id"`
-	PostID         int64       			`json:"post_id"`
-	Timestamp      int64       			`json:"timestamp"`
-	UserMentionIDs []int64     			`json:"user_mention_ids"`
-	SpanContext    	trace.SpanContext 	`json:"span_context"`
+	ReqID          int64       			 `json:"req_id"`
+	UserID         int64       			 `json:"user_id"`
+	PostID         int64       			 `json:"post_id"`
+	Timestamp      int64       			 `json:"timestamp"`
+	UserMentionIDs []int64     			 `json:"user_mention_ids"`
+	// tracing
+	SpanContext    	sn_trace.SpanContext `json:"span_context"`
+	// evaluation metrics
+	NotificationSendTs 	int64 `json:"notification_write"`
 }
 
 type Creator struct {

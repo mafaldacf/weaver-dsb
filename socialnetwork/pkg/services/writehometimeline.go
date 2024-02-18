@@ -8,13 +8,13 @@ import (
 	"sync"
 	"time"
 
+	sn_metrics "socialnetwork/pkg/metrics"
 	"socialnetwork/pkg/model"
 	"socialnetwork/pkg/storage"
-	sntrace "socialnetwork/pkg/trace"
+	sn_trace "socialnetwork/pkg/trace"
 	"socialnetwork/pkg/utils"
 
 	"github.com/ServiceWeaver/weaver"
-	"github.com/ServiceWeaver/weaver/metrics"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -27,14 +27,14 @@ type WriteHomeTimelineService interface {
 }
 
 type writeHomeTimelineServiceOptions struct {
-	RabbitMQAddr map[string]string 	`toml:"rabbitmq_address"`
-	MongoDBAddr  map[string]string 	`toml:"mongodb_address"`
-	RedisAddr    map[string]string 	`toml:"redis_address"`
-	RabbitMQPort int    			`toml:"rabbitmq_port"`
-	MongoDBPort  int    			`toml:"mongodb_port"`
-	RedisPort    int    			`toml:"redis_port"`
-	NumWorkers   int    			`toml:"num_workers"`
-	Region       string 			`toml:"region"`
+	RabbitMQAddr map[string]string `toml:"rabbitmq_address"`
+	MongoDBAddr  map[string]string `toml:"mongodb_address"`
+	RedisAddr    map[string]string `toml:"redis_address"`
+	RabbitMQPort int               `toml:"rabbitmq_port"`
+	MongoDBPort  int               `toml:"mongodb_port"`
+	RedisPort    int               `toml:"redis_port"`
+	NumWorkers   int               `toml:"num_workers"`
+	Region       string            `toml:"region"`
 }
 
 type writeHomeTimelineService struct {
@@ -44,13 +44,6 @@ type writeHomeTimelineService struct {
 	mongoClient        *mongo.Client
 	redisClient        *redis.Client
 }
-
-var (
-	inconsistencies = metrics.NewCounter(
-		"inconsistencies",
-		"The number of times an cross-service inconsistency has occured",
-	)
-)
 
 func (w *writeHomeTimelineService) Init(ctx context.Context) error {
 	logger := w.Logger(ctx)
@@ -96,9 +89,7 @@ func (w *writeHomeTimelineService) WriteHomeTimeline(ctx context.Context, msg mo
 		logger.Debug("valid span", "s", span.IsRecording())
 	}
 
-	trace.SpanFromContext(ctx).SetAttributes(
-		attribute.Int64("wht_read_notification_ts", time.Now().UnixMilli()),
-	)
+	sn_metrics.QueueDurationMs.Put(float64(time.Now().UnixMilli() - msg.NotificationSendTs))
 
 	db := w.mongoClient.Database("post-storage")
 	collection := db.Collection("posts")
@@ -112,7 +103,7 @@ func (w *writeHomeTimelineService) WriteHomeTimeline(ctx context.Context, msg mo
 				attribute.Bool("poststorage_consistent_read", false),
 			)
 			logger.Debug("inconsistency!")
-			inconsistencies.Inc()
+			sn_metrics.Inconsistencies.Inc()
 			return nil
 		} else {
 			logger.Error("error reading post from mongodb", "msg", err.Error())
@@ -168,9 +159,10 @@ func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []
 		logger.Error("error parsing json message", "msg", err.Error())
 		return err
 	}
+	sn_metrics.ReceivedNotifications.Add(1)
 	logger.Debug("received rabbitmq message", "post_id", msg.PostID, "msg", msg)
 
-	spanContext, err := sntrace.ParseSpanContext(msg.SpanContext)
+	spanContext, err := sn_trace.ParseSpanContext(msg.SpanContext)
 	if err != nil {
 		logger.Error("error parsing span context", "msg", err.Error())
 		return err
@@ -183,7 +175,6 @@ func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []
 	defer func() {
 		span.End()
 	}() */
-
 
 	return w.WriteHomeTimeline(ctx, msg)
 }

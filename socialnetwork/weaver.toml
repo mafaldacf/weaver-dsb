@@ -56,7 +56,7 @@ rabbitmq_address    =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-
 mongodb_address     =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
 redis_address       =  { "local" = "localhost", "europe-west3" = "1.2.3.4", "us-central-1" = "4.3.2.1" }
 rabbitmq_port       = 5672
-mongodb_port        = 27017
+mongodb_port        = 27018 #FIXME
 redis_port          = 6382
 num_workers         = 4
 

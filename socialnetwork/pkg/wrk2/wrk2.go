@@ -14,6 +14,7 @@ import (
 
 	"socialnetwork/pkg/model"
 	"socialnetwork/pkg/services"
+	sn_metrics "socialnetwork/pkg/metrics"
 
 	"github.com/ServiceWeaver/weaver"
 )
@@ -389,6 +390,7 @@ func (s *server) composePostHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := s.Logger(ctx)
 	logger.Info("entering wkr2-api/post/compose")
+	composePostStartMs := time.Now().UnixMilli()
 
 	params, err := validateComposePostParams(logger, r)
 	if err != nil {
@@ -437,6 +439,7 @@ func (s *server) composePostHandler(w http.ResponseWriter, r *http.Request) {
 	response := fmt.Sprintf("success! user %s (id=%d) composed post: %s\n", params.username, params.userID, params.text)
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte(response))
+	sn_metrics.ComposePostDuration.Put(float64(time.Now().UnixMilli() - composePostStartMs))
 }
 
 type ReadTimelineParams struct {

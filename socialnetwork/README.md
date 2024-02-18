@@ -68,13 +68,13 @@ gcloud config get-value project
 Deploy datastores in GCP machines using Terraform:
 
 ``` zsh
-./manager storage-deploy
-./manager storage-start
+./manager.py storage-deploy
+./manager.py storage-start
 ```
 
 Fetch status from docker swarm and generate app weaver config `weaver-gcp.toml` (IMPORTANT for next step!!)
 ``` zsh
-./manager storage-info
+./manager.py storage-info
 ```
 
 Deploy application using GKE:
@@ -90,30 +90,29 @@ weaver gke deploy weaver-gcp.toml
 Init social graph:
 
 ``` zsh
-./manager init-social-graph
+./manager.py init-social-graph
 ```
 
 Run benchmark:
 
 ``` zsh
-./manager wrk2
+./manager.py wrk2
 ```
 
 Gather metrics:
 ``` zsh
-./manager metrics
+./manager.py metrics
 ```
 
 Clean at the end:
 
 ``` zsh
-./manager storage-clean
+./manager.py storage-clean
 ```
 
 [**OPTIONAL**] to avoid daily google cloud billings, purge all GCP GKE resources:
 ``` zsh
 weaver gke purge --force
-```
 
 ## LOCAL Deployment
 
@@ -121,13 +120,13 @@ weaver gke purge --force
 
 Build docker images:
 ``` zsh
-./manager storage-build --local
+./manager.py storage-build --local
 ```
 
 Deploy datastores:
 
 ``` zsh
-./manager storage-start --local
+./manager.py storage-start --local
 ```
 
 Deploy application:
@@ -141,24 +140,24 @@ weaver multi deploy weaver.toml
 Init social graph:
 
 ``` zsh
-./manager init-social-graph --local
+./manager.py init-social-graph --local
 ```
 
 Run benchmark:
 
 ``` zsh
-./manager wrk2 --local
+./manager.py wrk2 --local
 ```
 
 Gather metrics:
 ``` zsh
-./manager metrics --local
+./manager.py metrics --local
 ```
 
 Clean datastores:
 
 ``` zsh
-./manager storage-clean --local
+./manager.py storage-clean --local
 ```
 
 ### Additional
