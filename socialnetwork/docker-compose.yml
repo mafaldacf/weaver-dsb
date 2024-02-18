@@ -240,8 +240,6 @@ services:
     restart: 'no'
     environment:
       RABBITMQ_ERLANG_COOKIE: "WRITE-HOME-TIMELINE-RABBITMQ"
-    #volumes:
-      #- ./config/rabbitmq/erlang.cookie:/etc/rabbitmq/.erlang.cookie
     deploy:
       placement:
         constraints: [node.hostname == weaver-dsb-db-manager]
@@ -263,10 +261,9 @@ services:
       - 5672:5672
     restart: 'no'
     volumes:
-      - ./config/rabbitmq/write-home-timeline-rabbitmq-eu-definitions.json:/etc/rabbitmq/definitions.json:ro
-      - ./config/rabbitmq/write-home-timeline-rabbitmq-eu.conf:/etc/rabbitmq/rabbitmq.conf:ro
-      - ./config/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
-      #- ./config/rabbitmq/erlang.cookie:/etc/rabbitmq/.erlang.cookie
+      - ./docker/config/rabbitmq/write-home-timeline-rabbitmq-eu-definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ./docker/config/rabbitmq/write-home-timeline-rabbitmq-eu.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./docker/config/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
     deploy:
       placement:
         constraints: [node.hostname == weaver-dsb-db-eu]
@@ -284,10 +281,9 @@ services:
       - 5673:5672
     restart: 'no'
     volumes:
-      - ./config/rabbitmq/write-home-timeline-rabbitmq-us-definitions.json:/etc/rabbitmq/definitions.json:ro
-      - ./config/rabbitmq/write-home-timeline-rabbitmq-us.conf:/etc/rabbitmq/rabbitmq.conf:ro
-      - ./config/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
-      #- ./config/rabbitmq/erlang.cookie:/etc/rabbitmq/.erlang.cookie
+      - ./docker/config/rabbitmq/write-home-timeline-rabbitmq-us-definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ./docker/config/rabbitmq/write-home-timeline-rabbitmq-us.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./docker/config/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
     deploy:
       placement:
         constraints: [node.hostname == weaver-dsb-db-us]
