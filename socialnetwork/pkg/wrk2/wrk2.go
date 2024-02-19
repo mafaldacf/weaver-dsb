@@ -21,6 +21,7 @@ import (
 
 type server struct {
 	weaver.Implements[weaver.Main]
+	weaver.WithConfig[serverOptions]
 	homeTimelineService weaver.Ref[services.HomeTimelineService]
 	userTimelineService weaver.Ref[services.UserTimelineService]
 	textService         weaver.Ref[services.TextService]
@@ -29,6 +30,10 @@ type server struct {
 	userService         weaver.Ref[services.UserService]
 	socialGraphService  weaver.Ref[services.SocialGraphService]
 	lis                 weaver.Listener `weaver:"wrk2"`
+}
+
+type serverOptions struct {
+	Region    		string `toml:"region"`
 }
 
 func Serve(ctx context.Context, s *server) error {
@@ -44,7 +49,7 @@ func Serve(ctx context.Context, s *server) error {
 	mux.Handle("/wrk2-api/user-timeline/read", instrument("user-timeline/read", s.readUserTimelineHandler, http.MethodGet, http.MethodPost))
 
 	var handler http.Handler = mux
-	s.Logger(ctx).Info("wrk2-api available", "addr", s.lis)
+	s.Logger(ctx).Info("wrk2-api available", "addr", s.lis, "region", s.Config().Region)
 	return http.Serve(s.lis, handler)
 }
 
@@ -439,7 +444,8 @@ func (s *server) composePostHandler(w http.ResponseWriter, r *http.Request) {
 	response := fmt.Sprintf("success! user %s (id=%d) composed post: %s\n", params.username, params.userID, params.text)
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte(response))
-	sn_metrics.ComposePostDuration.Put(float64(time.Now().UnixMilli() - composePostStartMs))
+	regionLabel := sn_metrics.RegionLabel{Region: s.Config().Region}
+	sn_metrics.ComposePostDuration.Get(regionLabel).Put(float64(time.Now().UnixMilli() - composePostStartMs))
 }
 
 type ReadTimelineParams struct {

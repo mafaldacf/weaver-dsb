@@ -156,11 +156,10 @@ def gen_weaver_config(public_ip_eu = "0.0.0.0", public_ip_us = "0.0.0.0"):
   data = toml.load("weaver.toml")
 
   for _, config in data.items():
-    for entry, values in config.items():
-      if entry in ['mongodb_address', 'redis_address', 'rabbitmq_address', 'memcached_address']:
-        values["local"] = public_ip_eu
-        values["europe-west3"] = public_ip_eu
-        values["us-central-1"] = public_ip_us
+    config['mongodb_address'] = public_ip_eu
+    config['redis_address'] = public_ip_eu
+    config['rabbitmq_address'] = public_ip_eu
+    config['memcached_address'] = public_ip_eu
 
   f = open("weaver-gcp.toml",'w')
   toml.dump(data, f)
@@ -247,42 +246,50 @@ def wrk2(address, threads=4, conns=2, duration=5, rate=50):
 #╰───────────────────┴────────────────────┴───────────────────────┴───────╯
 
 def metrics(deployment_type='gke', timestamp=None):
-  from plumbum.cmd import weaver
+  from plumbum.cmd import weaver, grep
   import re
 
   pattern = re.compile(r'^.*│.*│.*│.*│\s*(\d+\.?\d*)\s*│.*$', re.MULTILINE)
 
+  def get_filter_metrics(deployment_type, metric_name, region):
+    #return (weaver[deployment_type, 'metrics', metric_name] | grep[region])()
+    return weaver[deployment_type, 'metrics', metric_name]()
+
   # wkr2 api
-  compose_post_duration_metrics = weaver[deployment_type, 'metrics', 'sn_compose_post_duration_ms']()
-  compose_post_duration_avg_ms = sum(float(value) for value in pattern.findall(compose_post_duration_metrics))
+  compose_post_duration_metrics = get_filter_metrics(deployment_type, 'sn_compose_post_duration_ms', 'europe-west3')
+  compose_post_duration_metrics_values = pattern.findall(compose_post_duration_metrics)
+  compose_post_duration_avg_ms = sum(float(value) for value in compose_post_duration_metrics_values)/len(compose_post_duration_metrics_values)
   # compose post service
-  composed_posts_metrics = weaver[deployment_type, 'metrics', 'sn_composed_posts']()
+  composed_posts_metrics = get_filter_metrics(deployment_type, 'sn_composed_posts', 'europe-west3')
   composed_posts_count = sum(int(value) for value in pattern.findall(composed_posts_metrics))
   # post storage service
-  write_post_duration_metrics = weaver[deployment_type, 'metrics', 'sn_write_post_duration_ms']()
-  write_post_duration_avg_ms = sum(float(value) for value in pattern.findall(write_post_duration_metrics))
+  write_post_duration_metrics = get_filter_metrics(deployment_type, 'sn_write_post_duration_ms', 'europe-west3')
+  write_post_duration_metrics_values = pattern.findall(write_post_duration_metrics)
+  write_post_duration_avg_ms = sum(float(value) for value in write_post_duration_metrics_values)/len(write_post_duration_metrics_values)
   # write home timeline service
-  queue_duration_metrics = weaver[deployment_type, 'metrics', 'sn_queue_duration_ms']()
-  queue_duration_avg_ms = sum(float(value) for value in pattern.findall(queue_duration_metrics))
-  received_notifications_metrics = weaver[deployment_type, 'metrics', 'sn_received_notifications']()
+  queue_duration_metrics = get_filter_metrics(deployment_type, 'sn_queue_duration_ms', 'us-central1')
+  queue_duration_metrics_values = pattern.findall(queue_duration_metrics)
+  queue_duration_avg_ms = sum(float(value) for value in queue_duration_metrics_values)/len(queue_duration_metrics_values)
+  received_notifications_metrics = get_filter_metrics(deployment_type, 'sn_received_notifications', 'us-central1')
   received_notifications_count = sum(int(value) for value in pattern.findall(received_notifications_metrics))
+  inconsitencies_metrics = get_filter_metrics(deployment_type, 'sn_inconsistencies', 'us-central1')
   inconsitencies_metrics = weaver[deployment_type, 'metrics', 'sn_inconsistencies']()
   inconsistencies_count = sum(int(value) for value in pattern.findall(inconsitencies_metrics))
 
   pc_inconsistencies = "{:.2f}".format((inconsistencies_count / composed_posts_count) * 100)
   pc_received_notifications = "{:.2f}".format((received_notifications_count / composed_posts_count) * 100)
-  compose_post_duration_avg_ms = "{:.4f}".format(compose_post_duration_avg_ms)
-  write_post_duration_avg_ms = "{:.4f}".format(write_post_duration_avg_ms)
-  queue_duration_avg_ms = "{:.4f}".format(queue_duration_avg_ms)
+  compose_post_duration_avg_ms = "{:.2f}".format(compose_post_duration_avg_ms)
+  write_post_duration_avg_ms = "{:.2f}".format(write_post_duration_avg_ms)
+  queue_duration_avg_ms = "{:.2f}".format(queue_duration_avg_ms)
 
   results = f"""
     # composed posts:\t\t\t{composed_posts_count}
-    # received notifications:\t\t{composed_posts_count} ({pc_received_notifications}%)
-    # inconsistencies:\t\t\t{inconsistencies_count}
-    % inconsistencies:\t\t\t{pc_inconsistencies}%
-    % avg. compose post duration:\t{compose_post_duration_avg_ms}ms
-    % avg. write post duration:\t\t{write_post_duration_avg_ms}ms
-    % avg. queue duration:\t\t{queue_duration_avg_ms}ms
+    # received notifications @ US:\t{received_notifications_count} ({pc_received_notifications}%)
+    # inconsistencies @ US:\t\t{inconsistencies_count}
+    % inconsistencies @ US:\t\t{pc_inconsistencies}%
+    > avg. compose post duration:\t{compose_post_duration_avg_ms}ms
+    > avg. write post duration:\t\t{write_post_duration_avg_ms}ms
+    > avg. queue duration @ US:\t\t{queue_duration_avg_ms}ms
   """
   print(results)
 

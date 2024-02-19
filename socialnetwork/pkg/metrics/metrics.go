@@ -2,45 +2,40 @@ package metrics
 
 import "github.com/ServiceWeaver/weaver/metrics"
 
-type ClientRequestLabels struct {
+type RegionLabel struct {
     Region string
 }
 
 var (
-	ClientRequest = metrics.NewCounterMap[ClientRequestLabels](
-		"sn_client_request",
-		"Number of client requests received at EU or US",
-	)
-
 	// wrk2 api
-	ComposePostDuration = metrics.NewHistogram(
+	ComposePostDuration = metrics.NewHistogramMap[RegionLabel](
 		"sn_compose_post_duration_ms",
-		"Duration of compose post endpoint in milliseconds",
+		"Duration of compose post endpoint in milliseconds in the current region",
 		metrics.NonNegativeBuckets,
 	)
 	// composed post service
-	ComposedPosts = metrics.NewCounter(
+	ComposedPosts = metrics.NewCounterMap[RegionLabel](
 		"sn_composed_posts",
-		"The number of composed posts",
+		"The number of composed posts in the current region",
 	)
 	// post storage service
-	WritePostDurationMs = metrics.NewHistogram(
+	WritePostDurationMs = metrics.NewHistogramMap[RegionLabel](
 		"sn_write_post_duration_ms",
-		"Duration of queue in milliseconds",
+		"Duration of queue in milliseconds in the current region",
 		metrics.NonNegativeBuckets,
 	)
 	// write home timeline service
-	QueueDurationMs = metrics.NewHistogram(
+	QueueDurationMs = metrics.NewHistogramMap[RegionLabel](
 		"sn_queue_duration_ms",
-		"Duration of queue in milliseconds",
+		"Duration of queue in milliseconds in the current region",
 		metrics.NonNegativeBuckets,
 	)
-	ReceivedNotifications = metrics.NewCounter(
+	ReceivedNotifications = metrics.NewCounterMap[RegionLabel](
 		"sn_received_notifications",
-		"The number of received notifications",
+		"The number of received notifications in the current region",
 	)
-	Inconsistencies = metrics.NewCounter(
+	Inconsistencies = metrics.NewCounterMap[RegionLabel](
 		"sn_inconsistencies",
-		"The number of times an cross-service inconsistency has occured",
+		"The number of times an cross-service inconsistency has occured in the current region",
 	)
 )

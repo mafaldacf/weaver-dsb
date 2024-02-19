@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"socialnetwork/pkg/model"
-	"socialnetwork/pkg/utils"
 
 	"github.com/ServiceWeaver/weaver"
 )
@@ -20,19 +19,11 @@ type mediaService struct {
 }
 
 type mediaServiceOptions struct {
-	Region    string
+	Region    string `toml:"region"`
 }
 
 func (m *mediaService) Init(ctx context.Context) error {
 	logger := m.Logger(ctx)
-
-	region, err := utils.Region()
-	if err != nil {
-		logger.Error(err.Error())
-		return err
-	}
-	m.Config().Region = region
-
 	logger.Info("media service running!", "region", m.Config().Region)
 	return nil
 }

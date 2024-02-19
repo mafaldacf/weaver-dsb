@@ -17,7 +17,7 @@ type UniqueIdService interface {
 }
 
 type uniqueIdOptions struct {
-	Region string
+	Region    string `toml:"region"`
 }
 
 type uniqueIdService struct {
@@ -32,14 +32,6 @@ type uniqueIdService struct {
 
 func (u *uniqueIdService) Init(ctx context.Context) error {
 	logger := u.Logger(ctx)
-
-	region, err := utils.Region()
-	if err != nil {
-		logger.Error(err.Error())
-		return err
-	}
-	u.Config().Region = region
-
 	u.machineID = utils.GetMachineID()
 	u.currentTimestamp = -1
 	u.counter = 0

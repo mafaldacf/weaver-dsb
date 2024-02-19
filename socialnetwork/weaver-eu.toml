@@ -1,0 +1,101 @@
+# --------
+# Services
+# --------
+
+["socialnetwork/pkg/services/ComposePostService"]
+redis_address       = "localhost"
+rabbitmq_address    = "localhost"
+redis_port          = 6381
+rabbitmq_port       = 5672
+region              = "europe-west3"
+regions             = ["europe-west3", "us-central1"]
+
+["socialnetwork/pkg/services/HomeTimelineService"]
+redis_address       = "localhost"
+redis_port          = 6382
+region              = "europe-west3"
+
+["socialnetwork/pkg/services/PostStorageService"]
+mongodb_address     = "localhost"
+memcached_address   = "localhost"
+mongodb_port        = 27017
+memcached_port      = 11212
+region              = "europe-west3"
+
+["socialnetwork/pkg/services/SocialGraphService"]
+mongodb_address     = "localhost"
+redis_address       = "localhost"
+redis_port          = 6384
+mongodb_port        = 27017
+region              = "europe-west3"
+
+["socialnetwork/pkg/services/UrlShortenService"]
+mongodb_address     = "localhost"
+memcached_address   = "localhost"
+mongodb_port        = 27017
+memcached_port      = 11213
+region              = "europe-west3"
+
+["socialnetwork/pkg/services/UserService"]
+mongodb_address     = "localhost"
+memcached_address   = "localhost"
+mongodb_port        = 27017
+memcached_port      = 11214
+region              = "europe-west3"
+
+["socialnetwork/pkg/services/UserMentionService"]
+# uses UserService cache (memcached)
+mongodb_address     = "localhost"
+memcached_address   = "localhost"
+mongodb_port        = 27017
+memcached_port      = 11214
+region              = "europe-west3"
+
+["socialnetwork/pkg/services/UserTimelineService"]
+mongodb_address     = "localhost"
+redis_address       = "localhost"
+mongodb_port        = 27017
+redis_port          = 6383
+region              = "europe-west3"
+
+["socialnetwork/pkg/services/WriteHomeTimelineService"]
+# uses HomeTimelineService cache (redis)
+rabbitmq_address    = "localhost"
+mongodb_address     = "localhost"
+redis_address       = "localhost"
+mongodb_port        = 27017
+redis_port          = 6382
+rabbitmq_port       = 5672
+num_workers         = 16
+region              = "europe-west3"
+
+["socialnetwork/pkg/services/MediaService"]
+region              = "europe-west3"
+
+["socialnetwork/pkg/services/TextService"]
+region              = "europe-west3"
+
+["socialnetwork/pkg/services/UniqueIdService"]
+region              = "europe-west3"
+
+# wrk2 api
+["github.com/ServiceWeaver/weaver/Main"]
+region              = "europe-west3"
+
+# ----------
+# Deployment
+# ----------
+
+[single]
+listeners.wrk2 = {address = "127.0.0.1:9000"}
+
+[multi]
+listeners.wrk2 = {address = "127.0.0.1:9000"}
+
+[serviceweaver]
+binary = "./socialnetwork"
+name = "socialnetwork-eu"
+
+[gke]
+regions = ["europe-west3"]
+listeners.wrk2 = {public_hostname = "weaver.dsb.socialnetwork.eu"}

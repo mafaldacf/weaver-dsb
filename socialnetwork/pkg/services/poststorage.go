@@ -8,10 +8,9 @@ import (
 	"sync"
 	"time"
 
+	sn_metrics "socialnetwork/pkg/metrics"
 	"socialnetwork/pkg/model"
 	"socialnetwork/pkg/storage"
-	"socialnetwork/pkg/utils"
-	sn_metrics "socialnetwork/pkg/metrics"
 
 	"github.com/ServiceWeaver/weaver"
 	"github.com/bradfitz/gomemcache/memcache"
@@ -30,11 +29,11 @@ type PostStorageService interface {
 var _ weaver.NotRetriable = PostStorageService.StorePost
 
 type postStorageServiceOptions struct {
-	MongoDBAddr   map[string]string `toml:"mongodb_address"`
-	MemCachedAddr map[string]string `toml:"memcached_address"`
-	MongoDBPort   map[string]int   	`toml:"mongodb_port"`
-	MemCachedPort map[string]int    `toml:"memcached_port"`
-	Region        string
+	MongoDBAddr   string `toml:"mongodb_address"`
+	MemCachedAddr string `toml:"memcached_address"`
+	MongoDBPort   int    `toml:"mongodb_port"`
+	MemCachedPort int    `toml:"memcached_port"`
+	Region        string `toml:"region"`
 }
 
 type postStorageService struct {
@@ -46,20 +45,14 @@ type postStorageService struct {
 
 func (p *postStorageService) Init(ctx context.Context) error {
 	logger := p.Logger(ctx)
-
-	region, err := utils.Region()
-	if err != nil {
-		logger.Error(err.Error())
-		return err
-	}
-	p.Config().Region = region
-	p.mongoClient, err = storage.MongoDBClient(ctx, p.Config().MongoDBAddr[region], p.Config().MongoDBPort[region])
+	var err error
+	p.mongoClient, err = storage.MongoDBClient(ctx, p.Config().MongoDBAddr, p.Config().MongoDBPort)
 	if err != nil {
 		logger.Error(err.Error())
 		return err
 	}
 
-	p.memCachedClient = storage.MemCachedClient(p.Config().MemCachedAddr[region], p.Config().MemCachedPort[region])
+	p.memCachedClient = storage.MemCachedClient(p.Config().MemCachedAddr, p.Config().MemCachedPort)
 	if p.memCachedClient == nil {
 		errMsg := "error connecting to memcached"
 		logger.Error(errMsg)
@@ -67,8 +60,8 @@ func (p *postStorageService) Init(ctx context.Context) error {
 	}
 
 	logger.Info("post storage service running!", "region", p.Config().Region,
-		"mongodb_addr", p.Config().MongoDBAddr[region], "mongodb_port", p.Config().MongoDBPort[region],
-		"memcached_addr", p.Config().MemCachedAddr[region], "memcached_port", p.Config().MemCachedPort[region],
+		"mongodb_addr", p.Config().MongoDBAddr, "mongodb_port", p.Config().MongoDBPort,
+		"memcached_addr", p.Config().MemCachedAddr, "memcached_port", p.Config().MemCachedPort,
 	)
 	return nil
 }
@@ -87,8 +80,11 @@ func (p *postStorageService) StorePost(ctx context.Context, reqID int64, post mo
 	if err != nil {
 		logger.Error("error writing post", "msg", err.Error())
 	}
-
-	sn_metrics.WritePostDurationMs.Put(float64(time.Now().UnixMilli() - writePostStartMs))
+	regionLabel := sn_metrics.RegionLabel{Region: p.Config().Region}
+	logger.Debug("before write post metric 1", "region_label", regionLabel)
+	sn_metrics.WritePostDurationMs.Get(regionLabel)
+	logger.Debug("before write post metric 2", "region_label", regionLabel)
+	sn_metrics.WritePostDurationMs.Get(regionLabel).Put(float64(time.Now().UnixMilli() - writePostStartMs))
 	logger.Debug("inserted post", "objectid", r.InsertedID)
 
 	return nil

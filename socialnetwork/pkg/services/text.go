@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"socialnetwork/pkg/model"
-	"socialnetwork/pkg/utils"
 
 	"github.com/ServiceWeaver/weaver"
 )
@@ -17,7 +16,7 @@ type TextService interface {
 }
 
 type textServiceOptions struct {
-	Region 	 	string
+	Region    string `toml:"region"`
 }
 
 type textService struct {
@@ -30,14 +29,6 @@ type textService struct {
 
 func (t *textService) Init(ctx context.Context) error {
 	logger := t.Logger(ctx)
-
-	region, err := utils.Region()
-	if err != nil {
-		logger.Error(err.Error())
-		return err
-	}
-	t.Config().Region = region
-
 	logger.Info("text service running!", "region", t.Config().Region)
 	return nil
 }

@@ -12,7 +12,6 @@ import (
 	"socialnetwork/pkg/model"
 	"socialnetwork/pkg/storage"
 	sn_trace "socialnetwork/pkg/trace"
-	"socialnetwork/pkg/utils"
 
 	"github.com/ServiceWeaver/weaver"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -45,12 +44,12 @@ type composePostService struct {
 }
 
 type composePostServiceOptions struct {
-	RabbitMQAddr map[string]string `toml:"rabbitmq_address"`
-	RedisAddr    map[string]string `toml:"redis_address"`
-	RabbitMQPort map[string]int    `toml:"rabbitmq_port"`
-	RedisPort    map[string]int    `toml:"redis_port"`
-	Regions      []string          `toml:"regions"`
-	Region       string
+	RabbitMQAddr string 	`toml:"rabbitmq_address"`
+	RedisAddr    string 	`toml:"redis_address"`
+	RabbitMQPort int    	`toml:"rabbitmq_port"`
+	RedisPort    int    	`toml:"redis_port"`
+	Region       string 	`toml:"region"`
+	Regions      []string 	`toml:"regions"`
 }
 
 type MethodLabels struct {
@@ -63,26 +62,17 @@ type MethodLabels struct {
 func (c *composePostService) Init(ctx context.Context) error {
 	logger := c.Logger(ctx)
 
-	region, err := utils.Region()
+	var err error
+	c.amqChannel, c.amqConnection, err = storage.RabbitMQClient(ctx, c.Config().RabbitMQAddr, c.Config().RabbitMQPort)
 	if err != nil {
 		logger.Error(err.Error())
 		return err
 	}
-	c.Config().Region = region
-	if region == "local" {
-		c.Config().Regions = []string{region}
-	}
-
-	c.amqChannel, c.amqConnection, err = storage.RabbitMQClient(ctx, c.Config().RabbitMQAddr[region], c.Config().RabbitMQPort[region])
-	if err != nil {
-		logger.Error(err.Error())
-		return err
-	}
-	c.redisClient = storage.RedisClient(c.Config().RedisAddr[region], c.Config().RedisPort[region])
+	c.redisClient = storage.RedisClient(c.Config().RedisAddr, c.Config().RedisPort)
 
 	logger.Info("compose post service running!", "region", c.Config().Region, "regions", c.Config().Regions,
-		"rabbitmq_addr", c.Config().RabbitMQAddr[region], "rabbitmq_port", c.Config().RabbitMQPort[region],
-		"redis_addr", c.Config().RedisAddr[region], "redis_port", c.Config().RedisPort[region],
+		"rabbitmq_addr", c.Config().RabbitMQAddr, "rabbitmq_port", c.Config().RabbitMQPort,
+		"redis_addr", c.Config().RedisAddr, "redis_port", c.Config().RedisPort,
 	)
 	return nil
 }
@@ -198,9 +188,7 @@ func (c *composePostService) UploadCreator(ctx context.Context, reqID int64, cre
 func (c *composePostService) composeAndUpload(ctx context.Context, reqID int64) error {
 	logger := c.Logger(ctx)
 	logger.Debug("entering composeAndUpload", "reqid", reqID)
-
-	sn_metrics.ClientRequest.Get(sn_metrics.ClientRequestLabels{Region: c.Config().Region}).Add(1)
-
+	
 	var text string
 	var creator model.Creator
 	var medias []model.Media
@@ -286,7 +274,8 @@ func (c *composePostService) composeAndUpload(ctx context.Context, reqID int64) 
 	// --- Post Storage
 	logger.Debug("remotely calling PostStorageService")
 
-	sn_metrics.ComposedPosts.Inc()
+	regionLabel := sn_metrics.RegionLabel{Region: c.Config().Region}
+	sn_metrics.ComposedPosts.Get(regionLabel).Inc()
 
 	err := c.postStorageService.Get().StorePost(ctx, reqID, post)
 	if err != nil {
@@ -349,7 +338,11 @@ func (c *composePostService) uploadHomeTimelineHelper(ctx context.Context, reqID
 	}
 	for _, region := range c.Config().Regions {
 		routingKey := fmt.Sprintf("write-home-timeline-%s", region)
-		c.amqChannel.PublishWithContext(ctx, "write-home-timeline", routingKey, false, false, amqMsg)
+		err = c.amqChannel.PublishWithContext(ctx, "write-home-timeline", routingKey, false, false, amqMsg)
+		if err != nil {
+			logger.Error("error publishing to queue", "routing_key", routingKey, "err", err.Error())
+		}
+
 	}
 
 	span = trace.SpanFromContext(ctx)

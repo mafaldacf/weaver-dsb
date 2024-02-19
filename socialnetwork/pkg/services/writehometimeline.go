@@ -12,7 +12,6 @@ import (
 	"socialnetwork/pkg/model"
 	"socialnetwork/pkg/storage"
 	sn_trace "socialnetwork/pkg/trace"
-	"socialnetwork/pkg/utils"
 
 	"github.com/ServiceWeaver/weaver"
 	"github.com/redis/go-redis/v9"
@@ -27,14 +26,14 @@ type WriteHomeTimelineService interface {
 }
 
 type writeHomeTimelineServiceOptions struct {
-	RabbitMQAddr map[string]string `toml:"rabbitmq_address"`
-	MongoDBAddr  map[string]string `toml:"mongodb_address"`
-	RedisAddr    map[string]string `toml:"redis_address"`
-	RabbitMQPort map[string]int    `toml:"rabbitmq_port"`
-	MongoDBPort  map[string]int    `toml:"mongodb_port"`
-	RedisPort    map[string]int    `toml:"redis_port"`
-	NumWorkers   int               `toml:"num_workers"`
-	Region       string            `toml:"region"`
+	RabbitMQAddr string `toml:"rabbitmq_address"`
+	MongoDBAddr  string `toml:"mongodb_address"`
+	RedisAddr    string `toml:"redis_address"`
+	RabbitMQPort int    `toml:"rabbitmq_port"`
+	MongoDBPort  int    `toml:"mongodb_port"`
+	RedisPort    int    `toml:"redis_port"`
+	NumWorkers   int    `toml:"num_workers"`
+	Region       string `toml:"region"`
 }
 
 type writeHomeTimelineService struct {
@@ -47,20 +46,13 @@ type writeHomeTimelineService struct {
 
 func (w *writeHomeTimelineService) Init(ctx context.Context) error {
 	logger := w.Logger(ctx)
-
-	region, err := utils.Region()
+	var err error
+	w.mongoClient, err = storage.MongoDBClient(ctx, w.Config().MongoDBAddr, w.Config().MongoDBPort)
 	if err != nil {
 		logger.Error(err.Error())
 		return err
 	}
-	w.Config().Region = region
-
-	w.mongoClient, err = storage.MongoDBClient(ctx, w.Config().MongoDBAddr[region], w.Config().MongoDBPort[region])
-	if err != nil {
-		logger.Error(err.Error())
-		return err
-	}
-	w.redisClient = storage.RedisClient(w.Config().RedisAddr[region], w.Config().RedisPort[region])
+	w.redisClient = storage.RedisClient(w.Config().RedisAddr, w.Config().RedisPort)
 
 	var wg sync.WaitGroup
 	wg.Add(w.Config().NumWorkers)
@@ -73,9 +65,9 @@ func (w *writeHomeTimelineService) Init(ctx context.Context) error {
 	}
 
 	logger.Info("write home timeline service running!", "region", w.Config().Region, "n_workers", w.Config().NumWorkers,
-		"rabbitmq_addr", w.Config().RabbitMQAddr[region], "rabbitmq_port", w.Config().RabbitMQPort[region],
-		"mongodb_addr", w.Config().MongoDBAddr[region], "mongodb_port", w.Config().MongoDBPort[region],
-		"redis_addr", w.Config().RedisAddr[region], "redis_port", w.Config().RedisPort[region],
+		"rabbitmq_addr", w.Config().RabbitMQAddr, "rabbitmq_port", w.Config().RabbitMQPort,
+		"mongodb_addr", w.Config().MongoDBAddr, "mongodb_port", w.Config().MongoDBPort,
+		"redis_addr", w.Config().RedisAddr, "redis_port", w.Config().RedisPort,
 	)
 	wg.Wait()
 	return nil
@@ -86,10 +78,11 @@ func (w *writeHomeTimelineService) WriteHomeTimeline(ctx context.Context, msg mo
 
 	span := trace.SpanFromContext(ctx)
 	if trace.SpanContextFromContext(ctx).IsValid() {
-		logger.Debug("valid span", "s", span.IsRecording())
+		logger.Debug("valid span", "s", span.IsRecording(), "ctx", ctx.Value("TEST"))
 	}
 
-	sn_metrics.QueueDurationMs.Put(float64(time.Now().UnixMilli() - msg.NotificationSendTs))
+	regionLabel := sn_metrics.RegionLabel{Region: w.Config().Region}
+	sn_metrics.QueueDurationMs.Get(regionLabel).Put(float64(time.Now().UnixMilli() - msg.NotificationSendTs))
 
 	db := w.mongoClient.Database("post-storage")
 	collection := db.Collection("posts")
@@ -103,7 +96,7 @@ func (w *writeHomeTimelineService) WriteHomeTimeline(ctx context.Context, msg mo
 				attribute.Bool("poststorage_consistent_read", false),
 			)
 			logger.Debug("inconsistency!")
-			sn_metrics.Inconsistencies.Inc()
+			sn_metrics.Inconsistencies.Get(regionLabel).Inc()
 			return nil
 		} else {
 			logger.Error("error reading post from mongodb", "msg", err.Error())
@@ -159,12 +152,12 @@ func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []
 		logger.Error("error parsing json message", "msg", err.Error())
 		return err
 	}
-	sn_metrics.ReceivedNotifications.Add(1)
+	regionLabel := sn_metrics.RegionLabel{Region: w.Config().Region}
+	sn_metrics.ReceivedNotifications.Get(regionLabel).Add(1)
 	logger.Debug("received rabbitmq message", "post_id", msg.PostID, "msg", msg)
 
 	spanContext, err := sn_trace.ParseSpanContext(msg.SpanContext)
-	if err != nil {
-		logger.Error("error parsing span context", "msg", err.Error())
+	if err != nil {		logger.Error("error parsing span context", "msg", err.Error())
 		return err
 	}
 
@@ -182,7 +175,7 @@ func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []
 func (w *writeHomeTimelineService) workerThread(ctx context.Context) error {
 	logger := w.Logger(ctx)
 
-	ch, conn, err := storage.RabbitMQClient(ctx, w.Config().RabbitMQAddr[w.Config().Region], w.Config().RabbitMQPort[w.Config().Region])
+	ch, conn, err := storage.RabbitMQClient(ctx, w.Config().RabbitMQAddr, w.Config().RabbitMQPort)
 	if err != nil {
 		logger.Error(err.Error())
 		return err
@@ -197,7 +190,7 @@ func (w *writeHomeTimelineService) workerThread(ctx context.Context) error {
 	}
 
 	routingKey := fmt.Sprintf("write-home-timeline-%s", w.Config().Region)
-	_, err = ch.QueueDeclare(routingKey, true, false, false, false, nil)
+	_, err = ch.QueueDeclare(routingKey, false, false, false, false, nil)
 	if err != nil {
 		logger.Error("error declaring queue for rabbitmq", "msg", err.Error())
 		return err

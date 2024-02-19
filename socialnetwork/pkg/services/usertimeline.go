@@ -7,7 +7,6 @@ import (
 
 	"socialnetwork/pkg/model"
 	"socialnetwork/pkg/storage"
-	"socialnetwork/pkg/utils"
 
 	"github.com/ServiceWeaver/weaver"
 	"github.com/redis/go-redis/v9"
@@ -22,11 +21,11 @@ type UserTimelineService interface {
 }
 
 type userTimelineServiceOptions struct {
-	MongoDBAddr map[string]string 	`toml:"mongodb_address"`
-	RedisAddr   map[string]string 	`toml:"redis_address"`
-	MongoDBPort map[string]int    	`toml:"mongodb_port"`
-	RedisPort   map[string]int    	`toml:"redis_port"`
-	Region 		string
+	MongoDBAddr string 	`toml:"mongodb_address"`
+	RedisAddr   string 	`toml:"redis_address"`
+	MongoDBPort int    	`toml:"mongodb_port"`
+	RedisPort   int    	`toml:"redis_port"`
+	Region 		string 	`toml:"region"`
 }
 
 type userTimelineService struct {
@@ -40,23 +39,17 @@ type userTimelineService struct {
 func (u *userTimelineService) Init(ctx context.Context) error {
 	logger := u.Logger(ctx)
 
-	region, err := utils.Region()
-	if err != nil {
-		logger.Error(err.Error())
-		return err
-	}
-	u.Config().Region = region
-
-	u.mongoClient, err = storage.MongoDBClient(ctx, u.Config().MongoDBAddr[region], u.Config().MongoDBPort[region])
+	var err error
+	u.mongoClient, err = storage.MongoDBClient(ctx, u.Config().MongoDBAddr, u.Config().MongoDBPort)
 	if err != nil {
 		logger.Error(err.Error())
 		return err
 	}
 
-	u.redisClient = storage.RedisClient(u.Config().RedisAddr[region], u.Config().RedisPort[region])
+	u.redisClient = storage.RedisClient(u.Config().RedisAddr, u.Config().RedisPort)
 	logger.Info("user timeline service running!", "region", u.Config().Region,
-		"mongodb_addr", u.Config().MongoDBAddr[region], "mongodb_port", u.Config().MongoDBPort[region],
-		"redis_addr", u.Config().RedisAddr[region], "redis_port", u.Config().RedisPort[region],
+		"mongodb_addr", u.Config().MongoDBAddr, "mongodb_port", u.Config().MongoDBPort,
+		"redis_addr", u.Config().RedisAddr, "redis_port", u.Config().RedisPort,
 	)
 	return nil
 }

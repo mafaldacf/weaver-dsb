@@ -4,7 +4,6 @@ import (
 	"context"
 	"socialnetwork/pkg/model"
 	"socialnetwork/pkg/storage"
-	"socialnetwork/pkg/utils"
 	"strconv"
 
 	"github.com/ServiceWeaver/weaver"
@@ -24,22 +23,16 @@ type homeTimelineService struct {
 }
 
 type homeTimelineServiceOptions struct {
-	RedisAddr map[string]string `toml:"redis_address"`
-	RedisPort map[string]int    `toml:"redis_port"`
-	Region    string
+	RedisAddr string `toml:"redis_address"`
+	RedisPort int    `toml:"redis_port"`
+	Region    string `toml:"region"`
 }
 
 func (h *homeTimelineService) Init(ctx context.Context) error {
 	logger := h.Logger(ctx)
-	region, err := utils.Region()
-	if err != nil {
-		logger.Error(err.Error())
-		return err
-	}
-	h.Config().Region = region
-	h.redisClient = storage.RedisClient(h.Config().RedisAddr[region], h.Config().RedisPort[region])
+	h.redisClient = storage.RedisClient(h.Config().RedisAddr, h.Config().RedisPort)
 	logger.Info("home timeline service running!", "region", h.Config().Region,
-		"rabbitmq_addr", h.Config().RedisAddr[region], "rabbitmq_port", h.Config().RedisPort[region],
+		"rabbitmq_addr", h.Config().RedisAddr, "rabbitmq_port", h.Config().RedisPort,
 	)
 	return nil
 }

@@ -58,11 +58,11 @@ type userService struct {
 }
 
 type userServiceOptions struct {
-	MongoDBAddr   map[string]string `toml:"mongodb_address"`
-	MemCachedAddr map[string]string `toml:"memcached_address"`
-	MongoDBPort   map[string]int    `toml:"mongodb_port"`
-	MemCachedPort map[string]int    `toml:"memcached_port"`
-	Region 		  string
+	MongoDBAddr   string `toml:"mongodb_address"`
+	MemCachedAddr string `toml:"memcached_address"`
+	MongoDBPort   int    `toml:"mongodb_port"`
+	MemCachedPort int    `toml:"memcached_port"`
+	Region    	  string `toml:"region"`
 }
 
 func (u *userService) getCounter(timestamp int64) (int64, error) {
@@ -99,27 +99,20 @@ func (u *userService) hashPwd(pwd []byte) string {
 
 func (u *userService) Init(ctx context.Context) error {
 	logger := u.Logger(ctx)
-
-	region, err := utils.Region()
-	if err != nil {
-		logger.Error(err.Error())
-		return err
-	}
-	u.Config().Region = region
-
+	var err error
 	u.machineID = utils.GetMachineID()
 	u.currentTimestamp = -1
 	u.counter = 0
-	u.mongoClient, err = storage.MongoDBClient(ctx, u.Config().MongoDBAddr[region], u.Config().MongoDBPort[region])
+	u.mongoClient, err = storage.MongoDBClient(ctx, u.Config().MongoDBAddr, u.Config().MongoDBPort)
 	if err != nil {
 		logger.Error(err.Error())
 		return err
 	}
 
-	u.memCachedClient = storage.MemCachedClient(u.Config().MemCachedAddr[region], u.Config().MemCachedPort[region])
+	u.memCachedClient = storage.MemCachedClient(u.Config().MemCachedAddr, u.Config().MemCachedPort)
 	logger.Info("user service running!", "region", u.Config().Region,
-		"mongodb_addr", u.Config().MongoDBAddr[region], "mongodb_port", u.Config().MongoDBPort[region],
-		"memcached_addr", u.Config().MemCachedAddr[region], "memcached_port", u.Config().MemCachedPort[region],
+		"mongodb_addr", u.Config().MongoDBAddr, "mongodb_port", u.Config().MongoDBPort,
+		"memcached_addr", u.Config().MemCachedAddr, "memcached_port", u.Config().MemCachedPort,
 		"machine_id", u.machineID,
 	)
 	return nil
