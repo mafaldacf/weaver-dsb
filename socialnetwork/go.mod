@@ -44,6 +44,7 @@ require (
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/lightstep/varopt v1.3.0 // indirect
 	github.com/mattn/go-isatty v0.0.16 // indirect
+	github.com/mongodb/mongo-tools-common v4.0.18+incompatible
 	github.com/opentracing-contrib/go-amqp v0.0.0-20171102191528-e26701f95620
 	github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8 // indirect
 	github.com/redis/go-redis/v9 v9.4.0

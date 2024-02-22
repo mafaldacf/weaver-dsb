@@ -3,15 +3,15 @@ package services
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"strings"
 
 	"socialnetwork/pkg/model"
 	"socialnetwork/pkg/storage"
 
 	"github.com/ServiceWeaver/weaver"
 	"github.com/bradfitz/gomemcache/memcache"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type UserMentionService interface {
@@ -21,17 +21,17 @@ type UserMentionService interface {
 type userMentionService struct {
 	weaver.Implements[UserMentionService]
 	weaver.WithConfig[userMentionServiceOptions]
-	composePost 	weaver.Ref[ComposePostService]
-	mongoClient 	*mongo.Client
+	composePost     weaver.Ref[ComposePostService]
+	mongoClient     *mongo.Client
 	memCachedClient *memcache.Client
 }
 
 type userMentionServiceOptions struct {
-	MongoDBAddr 	string 	`toml:"mongodb_address"`
-	MemCachedAddr 	string 	`toml:"memcached_address"`
-	MongoDBPort 	int    	`toml:"mongodb_port"`
-	MemCachedPort 	int    	`toml:"memcached_port"`
-	Region    		string  `toml:"region"`
+	MongoDBAddr   string `toml:"mongodb_address"`
+	MemCachedAddr string `toml:"memcached_address"`
+	MongoDBPort   int    `toml:"mongodb_port"`
+	MemCachedPort int    `toml:"memcached_port"`
+	Region        string `toml:"region"`
 }
 
 func (u *userMentionService) Init(ctx context.Context) error {
@@ -82,9 +82,13 @@ func (u *userMentionService) UploadUserMentions(ctx context.Context, reqID int64
 			userIDsCached = append(userIDsCached, userID)
 		}
 	}
+	logger.Debug("after redis", "userIDsCached", userIDsCached, "usersNotCached", usersNotCached, "revLookup", revLookup, "keys", keys)
 
 	var userMentions []model.UserMention
 	for i, key := range keys {
+		if i >= len(userIDsCached) {
+			break
+		}
 		user_mention := model.UserMention{
 			UserID:   userIDsCached[i],
 			Username: revLookup[key],
@@ -98,13 +102,27 @@ func (u *userMentionService) UploadUserMentions(ctx context.Context, reqID int64
 			names = append(names, name)
 		}
 		collection := u.mongoClient.Database("user").Collection("user")
-		filter := `{"username": {"$in": ` + strings.Join(strings.Fields(fmt.Sprint(names)), ",") + `}}`
-		cur, err := collection.Find(ctx, filter)
+		filter := bson.D{
+			{Key: "username", Value: bson.D{
+				{Key: "$in", Value: names},
+			}},
+		}
+		opts := options.FindOptions{
+			Projection: bson.D{
+				{Key: "user_id", Value: 1},
+				{Key: "username", Value: 1},
+			},
+		}
+		cur, err := collection.Find(ctx, filter, &opts)
 		if err != nil {
 			return err
 		}
 		var newUserMentions []model.UserMention
-		cur.Decode(&newUserMentions) // ignore errors
+		err = cur.All(ctx, &newUserMentions) // ignore errors
+		if err != nil {
+			logger.Error("error decoding new user mentions", "msg", err.Error())
+			return err
+		}
 		userMentions = append(userMentions, newUserMentions...)
 	}
 	return u.composePost.Get().UploadUserMentions(ctx, reqID, userMentions)
