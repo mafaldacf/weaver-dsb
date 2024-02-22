@@ -9,7 +9,7 @@ import (
 )
 
 type MediaService interface {
-	UploadMedia(ctx context.Context, reqID int64, mediaTypes []string, medaIDs []int64) error
+	UploadMedia(ctx context.Context, reqID int64, mediaTypes []string, mediaIDs []int64, edited bool) error
 }
 
 type mediaService struct {
@@ -28,7 +28,7 @@ func (m *mediaService) Init(ctx context.Context) error {
 	return nil
 }
 
-func (m *mediaService) UploadMedia(ctx context.Context, reqID int64, mediaTypes []string, mediaIDs []int64) error {
+func (m *mediaService) UploadMedia(ctx context.Context, reqID int64, mediaTypes []string, mediaIDs []int64, edited bool) error {
 	logger := m.Logger(ctx)
 	logger.Debug("entering UploadMedia", "req_id", reqID, "media_types", mediaTypes, "mediaIDs", mediaIDs)
 	if len(mediaTypes) != len(mediaIDs) {
@@ -42,6 +42,9 @@ func (m *mediaService) UploadMedia(ctx context.Context, reqID int64, mediaTypes 
 			MediaID: mediaIDs[i],
 			MediaType: mediaTypes[i],
 		})
+	}
+	if edited {
+		return m.composePostService.Get().UploadEditedMedia(ctx, reqID, medias)
 	}
 	return m.composePostService.Get().UploadMedia(ctx, reqID, medias)
 }

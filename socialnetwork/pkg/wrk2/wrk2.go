@@ -22,6 +22,7 @@ import (
 type server struct {
 	weaver.Implements[weaver.Main]
 	weaver.WithConfig[serverOptions]
+	composePostService  weaver.Ref[services.ComposePostService]
 	homeTimelineService weaver.Ref[services.HomeTimelineService]
 	userTimelineService weaver.Ref[services.UserTimelineService]
 	textService         weaver.Ref[services.TextService]
@@ -45,6 +46,7 @@ func Serve(ctx context.Context, s *server) error {
 	mux.Handle("/wrk2-api/user/unfollow", instrument("user/unfollow", s.unfollowHandler, http.MethodGet, http.MethodPost))
 	mux.Handle("/wrk2-api/user/login", instrument("user/login", s.loginHandler, http.MethodGet, http.MethodPost))
 	mux.Handle("/wrk2-api/post/compose", instrument("post/compose", s.composePostHandler, http.MethodGet, http.MethodPost))
+	mux.Handle("/wrk2-api/post/edit", instrument("post/edit", s.editPostHandler, http.MethodGet, http.MethodPost))
 	mux.Handle("/wrk2-api/home-timeline/read", instrument("home-timeline/read", s.readHomeTimelineHandler, http.MethodGet, http.MethodPost))
 	mux.Handle("/wrk2-api/user-timeline/read", instrument("user-timeline/read", s.readUserTimelineHandler, http.MethodGet, http.MethodPost))
 
@@ -322,9 +324,11 @@ type ComposePostParams struct {
 	mediaTypes []string
 	mediaIDs   []int64
 	postType   model.PostType
+	// NEW ENDPOINT
+	postID	   int64
 }
 
-func validateComposePostParams(logger *slog.Logger, r *http.Request) (*ComposePostParams, error) {
+func validateComposePostParams(logger *slog.Logger, r *http.Request, edit bool) (*ComposePostParams, error) {
 	if err := r.ParseForm(); err != nil {
 		return nil, err
 	}
@@ -333,6 +337,8 @@ func validateComposePostParams(logger *slog.Logger, r *http.Request) (*ComposePo
 		reqID:    genReqID(),
 		userID:   -1,
 		postType: model.PostType(-1),
+		// NEW ENDPOINT
+		postID: -1,
 	}
 	// get params
 	params.username = r.Form.Get("username")
@@ -341,10 +347,19 @@ func validateComposePostParams(logger *slog.Logger, r *http.Request) (*ComposePo
 	postTypeStr := r.Form.Get("post_type")
 	mediaTypesStr := r.Form.Get("media_types")
 	mediaIDsStr := r.Form.Get("media_ids")
+	// NEW ENDPOINT
+	postIDStr := r.Form.Get("post_id")
 
 	// validate types
 	if userIDstr != "" {
 		params.userID, err = strconv.ParseInt(userIDstr, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid user_id")
+		}
+	}
+	// NEW ENDPOINT
+	if postIDStr != "" {
+		params.postID, err = strconv.ParseInt(postIDStr, 10, 64)
 		if err != nil {
 			return nil, fmt.Errorf("invalid user_id")
 		}
@@ -384,9 +399,15 @@ func validateComposePostParams(logger *slog.Logger, r *http.Request) (*ComposePo
 	if params.userID == -1 {
 		return nil, fmt.Errorf("must provide a user_id")
 	}
-	if params.postType < 0 || params.postType > 3 {
+	// ------------
+	// NEW ENDPOINT
+	if !edit && (params.postType < 0 || params.postType > 3) {
 		return nil, fmt.Errorf("invalid post_type. Available types: 0-POST, 1-REPOST, 2-REPLY, 3-DM")
 	}
+	if edit && params.postID == -1 {
+		return nil, fmt.Errorf("must provide a post_idd")
+	}
+	// ------------
 
 	return &params, nil
 }
@@ -397,7 +418,7 @@ func (s *server) composePostHandler(w http.ResponseWriter, r *http.Request) {
 	logger.Info("entering wkr2-api/post/compose")
 	composePostStartMs := time.Now().UnixMilli()
 
-	params, err := validateComposePostParams(logger, r)
+	params, err := validateComposePostParams(logger, r, false)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -411,13 +432,13 @@ func (s *server) composePostHandler(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer wg.Done()
 		logger.Debug("calling text service")
-		errs[0] = s.textService.Get().UploadText(ctx, params.reqID, params.text)
+		errs[0] = s.textService.Get().UploadText(ctx, params.reqID, params.text, false)
 		logger.Debug("upload text done!")
 	}()
 	go func() {
 		defer wg.Done()
 		logger.Debug("calling media service")
-		errs[1] = s.mediaService.Get().UploadMedia(ctx, params.reqID, params.mediaTypes, params.mediaIDs)
+		errs[1] = s.mediaService.Get().UploadMedia(ctx, params.reqID, params.mediaTypes, params.mediaIDs, false)
 		logger.Debug("upload media done!")
 	}()
 	go func() {
@@ -446,6 +467,57 @@ func (s *server) composePostHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(response))
 	regionLabel := sn_metrics.RegionLabel{Region: s.Config().Region}
 	sn_metrics.ComposePostDuration.Get(regionLabel).Put(float64(time.Now().UnixMilli() - composePostStartMs))
+}
+
+// ------------
+// NEW ENDPOINT
+// ------------
+func (s *server) editPostHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	logger := s.Logger(ctx)
+	logger.Info("entering wkr2-api/post/compose")
+
+	params, err := validateComposePostParams(logger, r, true)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	logger.Debug("valid parameters", "params", params)
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+	var errs [3]error
+	go func() {
+		defer wg.Done()
+		logger.Debug("calling text service to upload text")
+		errs[0] = s.textService.Get().UploadText(ctx, params.reqID, params.text, true)
+		logger.Debug("upload text done!")
+	}()
+	go func() {
+		defer wg.Done()
+		logger.Debug("calling media service to upload media")
+		errs[1] = s.mediaService.Get().UploadMedia(ctx, params.reqID, params.mediaTypes, params.mediaIDs, true)
+		logger.Debug("upload media done!")
+	}()
+	go func() {
+		defer wg.Done()
+		logger.Debug("calling compose service to upload post id")
+		errs[2] = s.composePostService.Get().UploadPostId(ctx, params.reqID, params.postID)
+		logger.Debug("upload media done!")
+	}()
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			logger.Debug("error composing post", "msg", err.Error())
+			http.Error(w, "error composing post: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	logger.Debug("success! edited post", "username", params.username, "userID", params.userID, "text", params.text)
+	response := fmt.Sprintf("success! user %s (id=%d) edited post: %s\n", params.username, params.userID, params.text)
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte(response))
 }
 
 type ReadTimelineParams struct {

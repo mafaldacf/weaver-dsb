@@ -223,6 +223,7 @@ curl -X POST "localhost:9000/wrk2-api/user/register" -d "username=USERNAME&user_
 # e.g.
 curl -X POST "localhost:9000/wrk2-api/user/register" -d "username=ana&user_id=0&first_name=ana1&last_name=ana2&password=123"
 curl -X POST "localhost:9000/wrk2-api/user/register" -d "username=bob&user_id=1&first_name=bob1&last_name=bob2&password=123"
+curl -X POST "localhost:9000/wrk2-api/user/register" -d "username=bill&user_id=2&first_name=bill1&last_name=bill2&password=123"
 ```
 
 **Follow User**: [{user_id, followee_id}, {user_name, followee_name}]
@@ -233,8 +234,8 @@ OR
 curl -X POST "localhost:9000/wrk2-api/user/follow" -d "user_name=USER_NAME&followee_name=FOLLOWEE_AME"
 
 # e.g.
+curl -X POST "localhost:9000/wrk2-api/user/follow" -d "user_name=bob&followee_name=ana"
 curl -X POST "localhost:9000/wrk2-api/user/follow" -d "user_name=ana&followee_name=bob"
-curl -X POST "localhost:9000/wrk2-api/user/follow" -d "user_id=1&followee_id=0"
 ```
 
 **Unfollow User**: [{user_id, followee_id}, {username, followee_name}]
@@ -249,11 +250,20 @@ curl -X POST "localhost:9000/wrk2-api/user/unfollow" -d "user_id=1&followee_id=0
 **Compose Post**: {user_id, text, username, post_type} [media_types, media_ids]
 
 ``` zsh
-curl -X POST "localhost:9000/wrk2-api/post/compose" -d "user_id=USER_ID&text=TEXT&username=USER_ID&post_type=POST_TYPE"
+curl -X POST "localhost:9000/wrk2-api/post/compose" -d "user_id=USER_ID&text=TEXT&username=USER_ID&post_type=POST_TYPE&media_types=[TYPE]&media_ids=[IDS]"
 
 # e.g.
 curl -X POST "localhost:9000/wrk2-api/post/compose" -d "user_id=0&text=helloworld_0&username=ana&post_type=0&media_types=["png"]&media_ids=[0]"
-curl -X POST "localhost:9000/wrk2-api/post/compose" -d "user_id=1&text=helloworld_0&username=username_1&post_type=0&media_types=["png"]&media_ids=[0]"
+curl -X POST "localhost:9000/wrk2-api/post/compose" -d "user_id=0&text=hey @bill&username=ana&post_type=0"
+```
+
+**[NEW] Edit Post**: {user_id, text, username, post_type} [media_types, media_ids]
+
+``` zsh
+curl -X POST "localhost:9000/wrk2-api/post/edit" -d "post_id=POST_ID&user_id=USER_ID&text=TEXT&username=USER_ID&media_types=[TYPE]&media_ids=[IDS]"
+
+# e.g.
+curl -X POST "localhost:9000/wrk2-api/post/edit" -d "post_id=2671428545294594049&user_id=0&text=helloworld_EDITED&username=ana&media_types=["jpeg"]&media_ids=[1]"
 ```
 
 **Read User Timeline**: {user_id} [start, stop]
@@ -273,5 +283,4 @@ curl "localhost:9000/wrk2-api/home-timeline/read" -d "user_id=USER_ID"
 
 # e.g.
 curl "localhost:9000/wrk2-api/home-timeline/read" -d "user_id=1"
-curl "localhost:9000/wrk2-api/home-timeline/read" -d "user_id=88"
 ```
