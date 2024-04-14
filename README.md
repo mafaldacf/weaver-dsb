@@ -1,4 +1,4 @@
-# DeathStarBench / Service Weaver
+# DeathStarBench @ Service Weaver
 
 Developed the [DeathStarBench](https://github.com/delimitrou/DeathStarBench) benchmark using the [Google's Service Weaver](https://serviceweaver.dev/) framework
 

@@ -1,4 +1,4 @@
-# DeathStarBench SocialNetwork / Service Weaver
+# DeathStarBench SocialNetwork @ Service Weaver
 
 Implementation of [DeathStarBench](https://github.com/delimitrou/DeathStarBench) SocialNetwork service using Service Weaver framework, drawing inspiration from the [Blueprint](https://gitlab.mpi-sws.org/cld/blueprint)'s repository.
 
@@ -26,7 +26,9 @@ sudo luarocks install luasocket
 sudo luarocks install penlight
 ```
 
-## GCP Configuration
+## Configuration
+
+### GCP Configuration
 
 1. Ensure that you have a GCP project created and setup as your default project in `gcloud cli`:
 ``` zsh
@@ -61,20 +63,94 @@ gcloud config get-value project
      - UDP ports: `4789,7946`
      - Priority: 100
 
-## GCP Deployment
+### Workload Configuration
 
-### Deploying with GKE
+Make:
+
+```zsh
+cd wrk2
+make
+```
+
+## Application Deployment
+
+### Local Deployment
+
+#### Weaver Multi Process
+
+Build docker images for datastores (mongodb, redis, rabbitmq):
+``` zsh
+./manager.py storage-build --local
+```
+
+Deploy datastores (mongodb, redis, rabbitmq):
+
+``` zsh
+./manager.py storage-run --local
+```
+
+Deploy application:
+
+``` zsh
+go generate
+go build
+
+# all services run in "local eu" except write-home-timeline that runs in "local us"
+weaver multi deploy weaver-local.toml
+```
+
+[**OPTIONAL**] Init social graph (not necessary if workload only runs sequences of `ComposePost`, which the default for now):
+
+``` zsh
+./manager.py init-social-graph --local
+```
+
+Run benchmark:
+
+``` zsh
+# default params: 2 threads, 2 clients, 5 duration (in seconds), 5 rate
+./manager.py wrk2 --local
+
+# if you want to specify some params
+./manager.py wrk2 --local -t THREADS -c CLIENTS -d DURATION -r RATE
+# values used antipode evaluation:
+# threads, clients, rate
+#   2        4        50
+#   2        4        100
+#   2        4        125
+#   2        4        150
+#   2        4        160
+```
+
+Gather metrics:
+``` zsh
+./manager.py metrics --local
+```
+
+Clean datastores:
+
+``` zsh
+./manager.py storage-clean --local
+```
+
+### GCP Deployment
+
+#### Deploying in GCP machines for app + datastores
+
+In progress...
+
+#### Deploying in GKE for app and in GCP machines for datastores
 
 Deploy datastores in GCP machines using Terraform:
 
 ``` zsh
-./manager.py storage-deploy
-./manager.py storage-start
+./manager.py storage-deploy --gcp
+./manager.py storage-run --gcp
 ```
 
 Fetch status from docker swarm and generate app weaver config `weaver-gcp.toml` (IMPORTANT for next step!!)
 ``` zsh
-./manager.py storage-info
+./manager.py storage-info --gcp
 ```
 
 Build your application
@@ -97,28 +173,29 @@ weaver gke deploy weaver-gcp.toml
 **[OPTIONAL]** Init social graph (not necessary for running workload to compose posts) by providing the load balance address that is displayed after running `weaver gke deploy weaver-gcp.toml`:
 
 ``` zsh
-./manager.py init-social-graph wrk2 --address GKE_LOAD_BALANCER_ADDRESS
+./manager.py init-social-graph --gcp --address GKE_LOAD_BALANCER_ADDRESS
 ```
 
 Run benchmark and obtain metrics by providing the load balance address that is displayed after running `weaver gke deploy weaver-gcp.toml`:
 
 ``` zsh
-./manager.py wrk2 --address GKE_LOAD_BALANCER_ADDRESS
-
-# if you want to specify your own workload parameters
-# by default, params are 2 threads, 4 clients, 5 duration (seconds), 50 rate (requests/second)
-./manager.py wrk2 --address GKE_LOAD_BALANCER_ADDRESS -t THREADS -c CLIENTS -d DURATION -r RATE
+# default params: 2 threads, 2 clients, 5 duration (in seconds), 5 rate
+./manager.py wrk2 --gcp --address GKE_LOAD_BALANCER_ADDRESS
+# if you want to specify some params
+./manager.py wrk2 --local --address GKE_LOAD_BALANCER_ADDRESS -t THREADS -c CLIENTS -d DURATION -r RATE
+# values used antipode evaluation:
+# 2 threads; 4 clients; 300 duration; 50, 100, 125, 150, and 160 rates
 ```
 
 Print metrics (same as gathered in previous workload):
 ``` zsh
-./manager.py metrics
+./manager.py metrics --gcp
 ```
 
 Terminate storage at the end:
 
 ``` zsh
-./manager.py storage-clean
+./manager.py storage-clean --gcp
 ```
 
 Kill app at the end:
@@ -126,68 +203,17 @@ Kill app at the end:
 weaver gke kill socialnetwork
 ```
 
-[**OPTIONAL**] to avoid daily google cloud billings, purge all GCP GKE resources:
+[**IMPORTANT WARNING**] This command can clean ALL GCP resources.
+**BE AWARE** to not abuse this command and only use when you are sure that you don't want to use the app in the future.
+This is because if you run the app again GCP will create **ALL** resources (including **Certificate Authorities**) which are **VERY EXPENSIVE** (~70€ per deployment).
+It is then recommended to delete the resources manually.
 ``` zsh
 weaver gke purge --force
 ```
 
-## LOCAL Deployment
+## Additional Info
 
-### Running Locally with Weaver in Multi Process
-
-Build docker images:
-``` zsh
-./manager.py storage-build --local
-```
-
-Deploy datastores:
-
-``` zsh
-./manager.py storage-start --local
-```
-
-Deploy application:
-
-``` zsh
-go generate
-go build
-weaver multi deploy weaver.toml
-```
-
-Init social graph:
-
-``` zsh
-./manager.py init-social-graph --local
-```
-
-Run benchmark:
-
-``` zsh
-./manager.py wrk2 --local
-```
-
-Gather metrics:
-``` zsh
-./manager.py metrics --local
-```
-
-Clean datastores:
-
-``` zsh
-./manager.py storage-clean --local
-```
-
-### Additional
-
-#### Manual Testing of HTTP Workload Generator
-
-Make:
-
-```zsh
-cd wrk2
-chmod +x deps/luajit/src/luajit
-make
-```
+### Manual Testing of HTTP Workload Generator
 
 Compose Posts
 
@@ -213,7 +239,7 @@ cd wrk2
 ./wrk -D exp -t <num-threads> -c <num-conns> -d <duration> -L -s ./scripts/social-network/read-user-timeline.lua http://localhost:9000/wrk2-api/user-timeline/read -R <reqs-per-sec>
 ```
 
-#### Manual Testing of HTTP Requests
+### Manual Testing of HTTP Requests
 
 **Register User**: {username, first_name, last_name, password} [user_id]
 

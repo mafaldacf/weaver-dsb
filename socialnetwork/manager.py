@@ -9,22 +9,26 @@ import yaml
 from time import sleep
 from tqdm import tqdm
 import datetime
+import os
 
 APP_PORT = 9000
 NUMBER_DOCKER_SWARM_SERVICE = 13
 NUMBER_DOCKER_SWARM_NODES   = 3
+BASE_DIR                    = os.path.dirname(os.path.realpath(__file__))
+
 # -----------
 # GCP profile
 # -----------
-with open('gcp/config.yml', 'r') as file:
-    config = yaml.safe_load(file)
-    GCP_PROJECT_ID                = str(config['project_id'])
-    GCP_USERNAME                  = str(config['username'])
-    GCP_CLOUD_STORAGE_BUCKET_NAME = str(config['cloud_storage_bucket_name'])
+# TBD
+GCP_PROJECT_ID                  = None
+GCP_USERNAME                    = None
+GCP_CLOUD_STORAGE_BUCKET_NAME   = None
+GCP_CREDENTIALS                 = None
+GCP_COMPUTE                     = None
 
-# -----------------
-# GCP configuration
-# -----------------
+# ---------------------
+# GCP app configuration
+# ---------------------
 # same as in terraform
 APP_FOLDER_NAME           = "weaver-dsb-socialnetwork"
 GCP_INSTANCE_NAME_MANAGER = "weaver-dsb-db-manager"
@@ -34,25 +38,41 @@ GCP_ZONE_MANAGER          = "europe-west3-a"
 GCP_ZONE_EU               = "europe-west3-a"
 GCP_ZONE_US               = "us-central1-a"
 
-# --------------
-# Dynamic Config
-# ---------------
-credentials = service_account.Credentials.from_service_account_file("gcp/credentials.json")
-compute = googleapiclient.discovery.build('compute', 'v1', credentials=credentials)
-
 # --------------------
 # Helpers
 # --------------------
 
+def load_gcp_profile():
+  global GCP_PROJECT_ID, GCP_USERNAME, GCP_CLOUD_STORAGE_BUCKET_NAME, GCP_COMPUTE
+  try:
+    with open('gcp/config.yml', 'r') as file:
+      config = yaml.safe_load(file)
+      GCP_PROJECT_ID                = str(config['project_id'])
+      GCP_USERNAME                  = str(config['username'])
+      GCP_CLOUD_STORAGE_BUCKET_NAME = str(config['cloud_storage_bucket_name'])
+    GCP_CREDENTIALS = service_account.Credentials.from_service_account_file("gcp/credentials.json")
+    GCP_COMPUTE = googleapiclient.discovery.build('compute', 'v1', credentials=GCP_CREDENTIALS)
+  except Exception as e:
+      print(f"[ERROR] error loading gcp profile: {e}")
+      exit(-1)
+
 def get_instance_ips(instance_name, zone):
-  instance = compute.instances().get(project=GCP_PROJECT_ID, zone=zone, instance=instance_name).execute()
+  instance = GCP_COMPUTE.instances().get(project=GCP_PROJECT_ID, zone=zone, instance=instance_name).execute()
   network_interface = instance['networkInterfaces'][0]
   # public, private
   return network_interface['accessConfigs'][0]['natIP'], network_interface['networkIP']
 
+
+
 def run_workload(timestamp, deployment, url, threads, conns, duration, rate):
   import threading
 
+  # verify workload files
+  if not os.path.exists(f"{BASE_DIR}/wrk2/wrk"):
+    print(f"[ERROR] error running workload: '{BASE_DIR}/wrk2/wrk' file does not exist")
+    exit(-1)
+
+  # display progress bar
   def tqdm_progress(duration):
       print(f"[INFO] running workload for {duration} seconds...")
       for _ in tqdm(range(int(duration))):
@@ -75,11 +95,172 @@ def run_workload(timestamp, deployment, url, threads, conns, duration, rate):
 
   progress_thread.join()
   return output
+
+def storage_info():
+  from plumbum.cmd import gcloud
+  cmd = f'sudo docker node ls'
+  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--command', cmd] & FG
+  cmd = f'sudo docker service ls'
+  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--command', cmd] & FG
+
+  print()
+  public_ip_manager, _ = get_instance_ips(GCP_INSTANCE_NAME_MANAGER, GCP_ZONE_MANAGER)
+  print("storage manager running @", public_ip_manager)
+  public_ip_eu, _ = get_instance_ips(GCP_INSTANCE_NAME_EU, GCP_ZONE_EU)
+  print(f"storage in {GCP_ZONE_EU} running @", public_ip_eu)
+  public_ip_us, _ = get_instance_ips(GCP_INSTANCE_NAME_US, GCP_ZONE_US)
+  print(f"storage in {GCP_ZONE_US} running @", public_ip_us)
+  print()
+
+  gen_weaver_config(public_ip_eu, public_ip_us)
+
+def gen_weaver_config(public_ip_eu = "0.0.0.0", public_ip_us = "0.0.0.0"):
+  data = toml.load("weaver.toml")
+
+  for _, config in data.items():
+    config['mongodb_address'] = public_ip_eu
+    config['redis_address'] = public_ip_eu
+    config['rabbitmq_address'] = public_ip_eu
+    config['memcached_address'] = public_ip_eu
+
+  f = open("weaver-gcp.toml",'w')
+  toml.dump(data, f)
+  f.close()
+  print("[INFO] generated app config at weaver-gcp.toml")
+
+# METRICS FORMAT
+#╭────────────────────────────────────────────────────────────────────────╮
+#│ // The number of composed posts                                        │
+#│ composed_posts: COUNTER                                                │
+#├───────────────────┬────────────────────┬───────────────────────┬───────┤
+#│ serviceweaver_app │ serviceweaver_node │ serviceweaver_version │ Value │
+#├───────────────────┼────────────────────┼───────────────────────┼───────┤
+#│ weaver-dsb-db     │ 0932683b           │ 1cd20361              │ 0     │
+#│ weaver-dsb-db     │ 1205179c           │ 1cd20361              │ 0     │
+#|  ...              | ...                | ...                   | ...   |
+#╰───────────────────┴────────────────────┴───────────────────────┴───────╯
+#
+#╭────────────────────────────────────────────────────────────────────────╮
+#│ // The number of times an cross-service inconsistency has occured      │
+#│ inconsistencies: COUNTER                                               │
+#├───────────────────┬────────────────────┬───────────────────────┬───────┤
+#│ serviceweaver_app │ serviceweaver_node │ serviceweaver_version │ Value │
+#├───────────────────┼────────────────────┼───────────────────────┼───────┤
+#│ weaver-dsb-db     │ 0932683b           │ 1cd20361              │ 0     │
+#│ weaver-dsb-db     │ 1205179c           │ 1cd20361              │ 0     │
+#|  ...              | ...                | ...                   | ...   |
+#╰───────────────────┴────────────────────┴───────────────────────┴───────╯
+
+def metrics(deployment_type='gke', timestamp=None, local=True):
+  from plumbum.cmd import weaver, grep
+  import re
+
+  primary_region = 'europe-west3'
+  secondary_region = 'us-central-1' if not local else primary_region
+
+  pattern = re.compile(r'^.*│.*│.*│.*│\s*(\d+\.?\d*)\s*│.*$', re.MULTILINE)
+
+  def get_filter_metrics(deployment_type, metric_name, region):
+    #return (weaver[deployment_type, 'metrics', metric_name] | grep[region])()
+    return weaver[deployment_type, 'metrics', metric_name]()
+
+  # wkr2 api
+  compose_post_duration_metrics = get_filter_metrics(deployment_type, 'sn_compose_post_duration_ms', primary_region)
+  compose_post_duration_metrics_values = pattern.findall(compose_post_duration_metrics)
+  compose_post_duration_avg_ms = sum(float(value) for value in compose_post_duration_metrics_values)/len(compose_post_duration_metrics_values)
+  # compose post service
+  composed_posts_metrics = get_filter_metrics(deployment_type, 'sn_composed_posts', primary_region)
+  composed_posts_count = sum(int(value) for value in pattern.findall(composed_posts_metrics))
+  # post storage service
+  write_post_duration_metrics = get_filter_metrics(deployment_type, 'sn_write_post_duration_ms', primary_region)
+  write_post_duration_metrics_values = pattern.findall(write_post_duration_metrics)
+  write_post_duration_avg_ms = sum(float(value) for value in write_post_duration_metrics_values)/len(write_post_duration_metrics_values)
+  # write home timeline service
+  queue_duration_metrics = get_filter_metrics(deployment_type, 'sn_queue_duration_ms', secondary_region)
+  queue_duration_metrics_values = pattern.findall(queue_duration_metrics)
+  queue_duration_avg_ms = sum(float(value) for value in queue_duration_metrics_values)/len(queue_duration_metrics_values)
+  received_notifications_metrics = get_filter_metrics(deployment_type, 'sn_received_notifications', secondary_region)
+  received_notifications_count = sum(int(value) for value in pattern.findall(received_notifications_metrics))
+  inconsitencies_metrics = get_filter_metrics(deployment_type, 'sn_inconsistencies', secondary_region)
+  inconsitencies_metrics = weaver[deployment_type, 'metrics', 'sn_inconsistencies']()
+  inconsistencies_count = sum(int(value) for value in pattern.findall(inconsitencies_metrics))
+
+  pc_inconsistencies = "{:.2f}".format((inconsistencies_count / composed_posts_count) * 100)
+  pc_received_notifications = "{:.2f}".format((received_notifications_count / composed_posts_count) * 100)
+  compose_post_duration_avg_ms = "{:.2f}".format(compose_post_duration_avg_ms)
+  write_post_duration_avg_ms = "{:.2f}".format(write_post_duration_avg_ms)
+  queue_duration_avg_ms = "{:.2f}".format(queue_duration_avg_ms)
+
+  results = f"""
+    # composed posts:\t\t\t{composed_posts_count}
+    # received notifications @ US:\t{received_notifications_count} ({pc_received_notifications}%)
+    # inconsistencies @ US:\t\t{inconsistencies_count}
+    % inconsistencies @ US:\t\t{pc_inconsistencies}%
+    > avg. compose post duration:\t{compose_post_duration_avg_ms}ms
+    > avg. write post duration:\t\t{write_post_duration_avg_ms}ms
+    > avg. queue duration @ US:\t\t{queue_duration_avg_ms}ms
+  """
+  print(results)
+
+  # save file if we ran workload
+  if timestamp:
+    eval_folder = 'local' if deployment_type == 'multi' else 'gke'
+    filepath = f"evaluation/{eval_folder}/{timestamp}_metrics.txt"
+    with open(filepath, "w") as f:
+      f.write(results)
+    print(f"[INFO] evaluation results saved at {filepath}")
+
 # --------------------
 # GCP
 # --------------------
 
-def storage_start():
+def gcp_storage_build():
+  print("[INFO] nothing to be done for gcp")
+  exit(0)
+
+def gcp_storage_deploy():
+  from plumbum.cmd import terraform, mkdir, cp, gsutil, rm
+  from plumbum.cmd import gcloud
+
+  mkdir['-p', f'tmp/{APP_FOLDER_NAME}'] & FG
+  cp['-r', 'docker-compose.yml', 'docker', 'config', f'tmp/{APP_FOLDER_NAME}'] & FG
+  gsutil['cp', '-r', f'tmp/{APP_FOLDER_NAME}', f'gs://{GCP_CLOUD_STORAGE_BUCKET_NAME}/'] & FG
+  rm['-r', 'tmp'] & FG
+
+  terraform['-chdir=./terraform', 'init'] & FG
+  terraform['-chdir=./terraform', 'apply'] & FG
+
+  print("[INFO] waiting 200 seconds to install all dependencies in GCP instances...")
+  for _ in tqdm(range(200)):
+      sleep(1)
+
+  def move_app_folder():
+    return f'sudo mv /{APP_FOLDER_NAME} /home/{GCP_USERNAME}/{APP_FOLDER_NAME} 2>/dev/null; true'
+  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', move_app_folder()] & FG
+  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_EU, '--zone', GCP_ZONE_EU, '--command', move_app_folder()] & FG
+  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_US, '--zone', GCP_ZONE_US, '--command', move_app_folder()] & FG
+  
+  def validate_app_folder(instance_identifier):
+    return f'if [ -d "/home/{GCP_USERNAME}/{APP_FOLDER_NAME}" ]; then echo "{instance_identifier}: app folder OK!"; fi'
+  try:
+    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', validate_app_folder('manager')] & FG
+    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_EU, '--zone', GCP_ZONE_EU, '--command', validate_app_folder('storage @ eu')] & FG
+    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_US, '--zone', GCP_ZONE_US, '--command', validate_app_folder('storage @ us')] & FG
+  except Exception as e:
+    print(f"[ERROR] app folder missing in gcp instance:\n\n{e}")
+    exit(-1)
+
+  def validate_docker_images(instance_identifier):
+    return f'if [ $(sudo docker images | tail -n +2 | wc -l) -eq 6 ]; then echo "{instance_identifier}: docker images OK!"; else exit 1; fi'
+  try:
+    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', validate_docker_images('manager')] & FG
+    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_EU, '--zone', GCP_ZONE_EU, '--command', validate_docker_images('storage @ eu')] & FG
+    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_US, '--zone', GCP_ZONE_US, '--command', validate_docker_images('storage @ us')] & FG
+  except Exception as e:
+    print(f"[ERROR] app folder missing in gcp instance:\n\n{e}")
+    exit(-1)
+  
+def gcp_storage_run():
   from plumbum.cmd import gcloud
 
   # get public ip for each instance
@@ -133,173 +314,22 @@ def storage_start():
   except Exception as e:
     print(f"[ERROR] not all services are replicated\n\n{e}")
     exit(-1)
-
-def storage_info():
-  from plumbum.cmd import gcloud
-  cmd = f'sudo docker node ls'
-  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--command', cmd] & FG
-  cmd = f'sudo docker service ls'
-  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--command', cmd] & FG
-
-  print()
-  public_ip_manager, _ = get_instance_ips(GCP_INSTANCE_NAME_MANAGER, GCP_ZONE_MANAGER)
-  print("storage manager running @", public_ip_manager)
-  public_ip_eu, _ = get_instance_ips(GCP_INSTANCE_NAME_EU, GCP_ZONE_EU)
-  print(f"storage in {GCP_ZONE_EU} running @", public_ip_eu)
-  public_ip_us, _ = get_instance_ips(GCP_INSTANCE_NAME_US, GCP_ZONE_US)
-  print(f"storage in {GCP_ZONE_US} running @", public_ip_us)
-  print()
-
-  gen_weaver_config(public_ip_eu, public_ip_us)
-
-def gen_weaver_config(public_ip_eu = "0.0.0.0", public_ip_us = "0.0.0.0"):
-  data = toml.load("weaver.toml")
-
-  for _, config in data.items():
-    config['mongodb_address'] = public_ip_eu
-    config['redis_address'] = public_ip_eu
-    config['rabbitmq_address'] = public_ip_eu
-    config['memcached_address'] = public_ip_eu
-
-  f = open("weaver-gcp.toml",'w')
-  toml.dump(data, f)
-  f.close()
-  print("[INFO] generated app config at weaver-gcp.toml")
-
-def storage_deploy():
-  from plumbum.cmd import terraform, mkdir, cp, gsutil, rm
-  from plumbum.cmd import gcloud
-
-  mkdir['-p', f'tmp/{APP_FOLDER_NAME}'] & FG
-  cp['-r', 'docker-compose.yml', 'docker', 'config', f'tmp/{APP_FOLDER_NAME}'] & FG
-  gsutil['cp', '-r', f'tmp/{APP_FOLDER_NAME}', f'gs://{GCP_CLOUD_STORAGE_BUCKET_NAME}/'] & FG
-  rm['-r', 'tmp'] & FG
-
-  terraform['-chdir=./terraform', 'init'] & FG
-  terraform['-chdir=./terraform', 'apply'] & FG
-
-  print("[INFO] waiting 200 seconds to install all dependencies in GCP instances...")
-  for _ in tqdm(range(200)):
-      sleep(1)
-
-  def move_app_folder():
-    return f'sudo mv /{APP_FOLDER_NAME} /home/{GCP_USERNAME}/{APP_FOLDER_NAME} 2>/dev/null; true'
-  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', move_app_folder()] & FG
-  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_EU, '--zone', GCP_ZONE_EU, '--command', move_app_folder()] & FG
-  gcloud['compute', 'ssh', GCP_INSTANCE_NAME_US, '--zone', GCP_ZONE_US, '--command', move_app_folder()] & FG
   
-  def validate_app_folder(instance_identifier):
-    return f'if [ -d "/home/{GCP_USERNAME}/{APP_FOLDER_NAME}" ]; then echo "{instance_identifier}: app folder OK!"; fi'
-  try:
-    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', validate_app_folder('manager')] & FG
-    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_EU, '--zone', GCP_ZONE_EU, '--command', validate_app_folder('storage @ eu')] & FG
-    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_US, '--zone', GCP_ZONE_US, '--command', validate_app_folder('storage @ us')] & FG
-  except Exception as e:
-    print(f"[ERROR] app folder missing in gcp instance:\n\n{e}")
-    exit(-1)
-
-  def validate_docker_images(instance_identifier):
-    return f'if [ $(sudo docker images | tail -n +2 | wc -l) -eq 6 ]; then echo "{instance_identifier}: docker images OK!"; else exit 1; fi'
-  try:
-    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', validate_docker_images('manager')] & FG
-    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_EU, '--zone', GCP_ZONE_EU, '--command', validate_docker_images('storage @ eu')] & FG
-    gcloud['compute', 'ssh', GCP_INSTANCE_NAME_US, '--zone', GCP_ZONE_US, '--command', validate_docker_images('storage @ us')] & FG
-  except Exception as e:
-    print(f"[ERROR] app folder missing in gcp instance:\n\n{e}")
-    exit(-1)
-  
-  
-def storage_clean():
+def gcp_storage_clean():
   from plumbum.cmd import terraform
   terraform['-chdir=./terraform', 'destroy'] & FG
 
-def init_social_graph(address):
+def gcp_init_social_graph(address):
   pass
 
+def gcp_metrics():
+  metrics('multi', None)
+
 #./manager.py wrk2 --local -t 2 -c 4 -d 5 -r 50
-def wrk2(address, threads=4, conns=2, duration=5, rate=50):
+def gcp_wrk2(address, threads=4, conns=2, duration=5, rate=50):
   timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
   run_workload(timestamp, 'gke', f"http://{address}", threads, conns, duration, rate)
   metrics('gke', timestamp)
-  
-# METRICS FORMAT
-#╭────────────────────────────────────────────────────────────────────────╮
-#│ // The number of composed posts                                        │
-#│ composed_posts: COUNTER                                                │
-#├───────────────────┬────────────────────┬───────────────────────┬───────┤
-#│ serviceweaver_app │ serviceweaver_node │ serviceweaver_version │ Value │
-#├───────────────────┼────────────────────┼───────────────────────┼───────┤
-#│ weaver-dsb-db     │ 0932683b           │ 1cd20361              │ 0     │
-#│ weaver-dsb-db     │ 1205179c           │ 1cd20361              │ 0     │
-#|  ...              | ...                | ...                   | ...   |
-#╰───────────────────┴────────────────────┴───────────────────────┴───────╯
-#
-#╭────────────────────────────────────────────────────────────────────────╮
-#│ // The number of times an cross-service inconsistency has occured      │
-#│ inconsistencies: COUNTER                                               │
-#├───────────────────┬────────────────────┬───────────────────────┬───────┤
-#│ serviceweaver_app │ serviceweaver_node │ serviceweaver_version │ Value │
-#├───────────────────┼────────────────────┼───────────────────────┼───────┤
-#│ weaver-dsb-db     │ 0932683b           │ 1cd20361              │ 0     │
-#│ weaver-dsb-db     │ 1205179c           │ 1cd20361              │ 0     │
-#|  ...              | ...                | ...                   | ...   |
-#╰───────────────────┴────────────────────┴───────────────────────┴───────╯
-
-def metrics(deployment_type='gke', timestamp=None):
-  from plumbum.cmd import weaver, grep
-  import re
-
-  pattern = re.compile(r'^.*│.*│.*│.*│\s*(\d+\.?\d*)\s*│.*$', re.MULTILINE)
-
-  def get_filter_metrics(deployment_type, metric_name, region):
-    #return (weaver[deployment_type, 'metrics', metric_name] | grep[region])()
-    return weaver[deployment_type, 'metrics', metric_name]()
-
-  # wkr2 api
-  compose_post_duration_metrics = get_filter_metrics(deployment_type, 'sn_compose_post_duration_ms', 'europe-west3')
-  compose_post_duration_metrics_values = pattern.findall(compose_post_duration_metrics)
-  compose_post_duration_avg_ms = sum(float(value) for value in compose_post_duration_metrics_values)/len(compose_post_duration_metrics_values)
-  # compose post service
-  composed_posts_metrics = get_filter_metrics(deployment_type, 'sn_composed_posts', 'europe-west3')
-  composed_posts_count = sum(int(value) for value in pattern.findall(composed_posts_metrics))
-  # post storage service
-  write_post_duration_metrics = get_filter_metrics(deployment_type, 'sn_write_post_duration_ms', 'europe-west3')
-  write_post_duration_metrics_values = pattern.findall(write_post_duration_metrics)
-  write_post_duration_avg_ms = sum(float(value) for value in write_post_duration_metrics_values)/len(write_post_duration_metrics_values)
-  # write home timeline service
-  queue_duration_metrics = get_filter_metrics(deployment_type, 'sn_queue_duration_ms', 'us-central1')
-  queue_duration_metrics_values = pattern.findall(queue_duration_metrics)
-  queue_duration_avg_ms = sum(float(value) for value in queue_duration_metrics_values)/len(queue_duration_metrics_values)
-  received_notifications_metrics = get_filter_metrics(deployment_type, 'sn_received_notifications', 'us-central1')
-  received_notifications_count = sum(int(value) for value in pattern.findall(received_notifications_metrics))
-  inconsitencies_metrics = get_filter_metrics(deployment_type, 'sn_inconsistencies', 'us-central1')
-  inconsitencies_metrics = weaver[deployment_type, 'metrics', 'sn_inconsistencies']()
-  inconsistencies_count = sum(int(value) for value in pattern.findall(inconsitencies_metrics))
-
-  pc_inconsistencies = "{:.2f}".format((inconsistencies_count / composed_posts_count) * 100)
-  pc_received_notifications = "{:.2f}".format((received_notifications_count / composed_posts_count) * 100)
-  compose_post_duration_avg_ms = "{:.2f}".format(compose_post_duration_avg_ms)
-  write_post_duration_avg_ms = "{:.2f}".format(write_post_duration_avg_ms)
-  queue_duration_avg_ms = "{:.2f}".format(queue_duration_avg_ms)
-
-  results = f"""
-    # composed posts:\t\t\t{composed_posts_count}
-    # received notifications @ US:\t{received_notifications_count} ({pc_received_notifications}%)
-    # inconsistencies @ US:\t\t{inconsistencies_count}
-    % inconsistencies @ US:\t\t{pc_inconsistencies}%
-    > avg. compose post duration:\t{compose_post_duration_avg_ms}ms
-    > avg. write post duration:\t\t{write_post_duration_avg_ms}ms
-    > avg. queue duration @ US:\t\t{queue_duration_avg_ms}ms
-  """
-  print(results)
-
-  # save file if we ran workload
-  if timestamp:
-    eval_folder = 'local' if deployment_type == 'multi' else 'gke'
-    filepath = f"evaluation/{eval_folder}/{timestamp}_metrics.txt"
-    with open(filepath, "w") as f:
-      f.write(results)
-    print(f"[INFO] evaluation results saved at {filepath}")
 
 
 # --------------------
@@ -315,20 +345,27 @@ def local_init_social_graph(address):
 def local_wrk2(address="localhost", threads=4, conns=2, duration=5, rate=50):
   timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
   run_workload(timestamp, 'local', f"http://{address}:{APP_PORT}", threads, conns, duration, rate)
-  metrics('multi', timestamp)
+  metrics('multi', timestamp, True)
 
 def local_metrics():
-  metrics('multi')
+  metrics('multi', None, True)
 
 def local_storage_deploy():
+  print("[INFO] nothing to be done for local")
+  exit(0)
+
+def local_storage_build():
   from plumbum.cmd import docker
   docker['build', '-t', 'mongodb-delayed:4.4.6', 'docker/mongodb-delayed/.'] & FG
   docker['build', '-t', 'mongodb-setup:4.4.6', 'docker/mongodb-setup/post-storage/.'] & FG
   docker['build', '-t', 'rabbitmq-setup:3.8', 'docker/rabbitmq-setup/write-home-timeline/.'] & FG
 
-def local_storage_start():
+def local_storage_run():
   from plumbum.cmd import docker_compose
   docker_compose['up', '-d'] & FG
+  print("[INFO] waiting 30 seconds for storages to be ready...")
+  for _ in tqdm(range(30)):
+      sleep(1)
 
 def local_storage_clean():
   from plumbum.cmd import docker_compose
@@ -339,30 +376,40 @@ if __name__ == "__main__":
   command_parser = main_parser.add_subparsers(help='commands', dest='command')
 
   commands = [
-    # ----------------
+    'init-social-graph', 'wrk2', 'metrics', 'storage-run', 'storage-info', 'storage-clean',
     # gcp datastores
-    'storage-deploy', 'storage-start', 'storage-info', 'storage-clean', 
-    # gcp app
-    'init-social-graph', 'wrk2', 'metrics',
+    'storage-deploy',
+    # local for docker
+    'storage-build',
   ]
   for cmd in commands:
     parser = command_parser.add_parser(cmd)
     parser.add_argument('--local', action='store_true', help="Running in localhost")
+    parser.add_argument('--gcp', action='store_true',   help="Running in gcp")
     if cmd == 'wrk2':
-      parser.add_argument('-t', '--threads', default=1, help="Number of threads")
-      parser.add_argument('-c', '--conns', default=1, help="Number of connections")
-      parser.add_argument('-d', '--duration', default=1, help="Duration")
-      parser.add_argument('-r', '--rate', default=1, help="Number of requests per second")
+      parser.add_argument('-t', '--threads', default=2, help="Number of threads")
+      parser.add_argument('-c', '--conns', default=2, help="Number of connections")
+      parser.add_argument('-d', '--duration', default=5, help="Duration")
+      parser.add_argument('-r', '--rate', default=5, help="Number of requests per second")
     if cmd in ['init-social-graph', 'wrk2']:
       parser.add_argument('-a', '--address', default="localhost", help="Address of GKE load balancer")
       
   args = vars(main_parser.parse_args())
   command = args.pop('command').replace('-', '_')
+
   local = args.pop('local')
+  gcp = args.pop('gcp')
+
+  if local and gcp or not local and not gcp:
+    print("[ERROR] one of --local or --gcp flgs needs to be provided")
+    exit(-1)
 
   if local:
     command = 'local_' + command
+  elif gcp:
+    load_gcp_profile()
+    command = 'gcp_' + command
 
-  print(f"[INFO] ----- {command.upper()} -----")
+  print(f"[INFO] ----- {command.upper()} -----\n")
   getattr(sys.modules[__name__], command)(**args)
   print(f"[INFO] done!")
