@@ -12,19 +12,19 @@ import (
 )
 
 type TextService interface {
-	UploadText(ctx context.Context, reqID int64, text string, edited bool) error
+	UploadText(ctx context.Context, reqID int64, text string) error
 }
 
 type textServiceOptions struct {
-	Region string `toml:"region"`
+	Region    string `toml:"region"`
 }
 
 type textService struct {
 	weaver.Implements[TextService]
 	weaver.WithConfig[textServiceOptions]
-	composePostService weaver.Ref[ComposePostService]
-	urlShortenService  weaver.Ref[UrlShortenService]
-	userMentionService weaver.Ref[UserMentionService]
+	composePostService   weaver.Ref[ComposePostService]
+	urlShortenService    weaver.Ref[UrlShortenService]
+	userMentionService   weaver.Ref[UserMentionService]
 }
 
 func (t *textService) Init(ctx context.Context) error {
@@ -33,7 +33,7 @@ func (t *textService) Init(ctx context.Context) error {
 	return nil
 }
 
-func (t *textService) UploadText(ctx context.Context, reqID int64, text string, edited bool) error {
+func (t *textService) UploadText(ctx context.Context, reqID int64, text string) error {
 	logger := t.Logger(ctx)
 	logger.Debug("entering UploadText", "req_id", reqID, "text", text)
 
@@ -43,7 +43,6 @@ func (t *textService) UploadText(ctx context.Context, reqID int64, text string, 
 	for _, m := range matches {
 		usernames = append(usernames, m[1:])
 	}
-	logger.Debug("usernames mentioned", "u", usernames)
 	url_re := regexp.MustCompile(`(http://|https://)([a-zA-Z0-9_!~*'().&=+$%-]+)`)
 	url_strings := url_re.FindAllString(text, -1)
 
@@ -58,7 +57,7 @@ func (t *textService) UploadText(ctx context.Context, reqID int64, text string, 
 		shortenUrlErr = t.urlShortenService.Get().UploadUrls(ctx, reqID, url_strings)
 	}()
 	// --
-
+	
 	// -- user mention service rpc
 	userMentionWg.Add(1)
 	go func() {
@@ -67,6 +66,7 @@ func (t *textService) UploadText(ctx context.Context, reqID int64, text string, 
 	}()
 	// --
 
+	
 	shortenUrlWg.Wait()
 	if shortenUrlErr != nil {
 		logger.Error("error uploading urls to url shorten service", "msg", shortenUrlErr.Error())
@@ -84,11 +84,7 @@ func (t *textService) UploadText(ctx context.Context, reqID int64, text string, 
 	uploadTextWg.Add(1)
 	go func() {
 		defer uploadTextWg.Done()
-		if edited {
-			uploadTextErr = t.composePostService.Get().UploadEditedText(ctx, reqID, updatedText)
-		} else {
-			uploadTextErr = t.composePostService.Get().UploadText(ctx, reqID, updatedText)
-		}
+		uploadTextErr = t.composePostService.Get().UploadText(ctx, reqID, updatedText)
 	}()
 	// --
 

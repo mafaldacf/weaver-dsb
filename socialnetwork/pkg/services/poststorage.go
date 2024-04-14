@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	mongo_json "github.com/mongodb/mongo-tools-common/json"
 	"strconv"
 	"sync"
 	"time"
@@ -25,8 +24,6 @@ type PostStorageService interface {
 	StorePost(ctx context.Context, reqID int64, post model.Post) error
 	ReadPost(ctx context.Context, reqID int64, postID int64) (model.Post, error)
 	ReadPosts(ctx context.Context, reqID int64, postIDs []int64) ([]model.Post, error)
-	// NEW ENDPOINT
-	EditPost(ctx context.Context, reqID int64, editedPost model.Post) (model.Post, error)
 }
 
 var _ weaver.NotRetriable = PostStorageService.StorePost
@@ -82,7 +79,6 @@ func (p *postStorageService) StorePost(ctx context.Context, reqID int64, post mo
 	r, err := collection.InsertOne(ctx, post)
 	if err != nil {
 		logger.Error("error writing post", "msg", err.Error())
-		return err
 	}
 	regionLabel := sn_metrics.RegionLabel{Region: p.Config().Region}
 	logger.Debug("before write post metric 1", "region_label", regionLabel)
@@ -92,67 +88,6 @@ func (p *postStorageService) StorePost(ctx context.Context, reqID int64, post mo
 	logger.Debug("inserted post", "objectid", r.InsertedID)
 
 	return nil
-}
-
-// ------------
-// NEW ENDPOINT
-// ------------
-func (p *postStorageService) EditPost(ctx context.Context, reqID int64, editedPost model.Post) (model.Post, error) {
-	logger := p.Logger(ctx)
-	logger.Info("entering EditPost", "req_id", reqID, "post_id", editedPost.PostID)
-
-	collection := p.mongoClient.Database("post-storage").Collection("posts")
-	filter := bson.D{
-		{Key: "post_id", Value: mongo_json.NumberLong(editedPost.PostID)},
-	}
-	update := bson.D{
-		{Key: "$set", Value: bson.D{
-			{Key: "req_id", Value: reqID},
-			{Key: "text", Value: editedPost.Text},
-			{Key: "edit_timestamp", Value: editedPost.EditTimestmap},
-			{Key: "user_mentions", Value: editedPost.UserMentions},
-			{Key: "media", Value: editedPost.Media},
-			{Key: "urls", Value: editedPost.URLs},
-		}},
-	}
-	result := collection.FindOneAndUpdate(ctx, filter, update)
-	var oldPost model.Post
-	if result.Err() != nil {
-		return oldPost, result.Err()
-	}
-	err := result.Decode(&oldPost)
-	if err != nil {
-		errMsg := fmt.Sprintf("post_id: %d not found in mongodb", editedPost.PostID)
-		logger.Warn(errMsg)
-		return oldPost, fmt.Errorf(errMsg)
-	}
-
-	logger.Debug("updated post", "old post", oldPost)
-
-	/* postJson, err := json.Marshal(editedPost)
-		if err != nil {
-			logger.Error("error converting post to json", "post", editedPost)
-			return err
-		}
-	item := memcache.Item {
-		Key: postIDStr,
-		Value: postJson,
-	}
-	err = p.memCachedClient.Replace(&item)
-	if err != nil {
-		logger.Error("error replacing post in memcached", "msg", err.Error())
-		return err
-	} */
-
-	// delete post entry from cache
-	postIDStr := strconv.FormatInt(editedPost.PostID, 10)
-	p.memCachedClient.Delete(postIDStr)
-	if err != nil {
-		logger.Error("error deleting post from memcached", "msg", err.Error())
-		return oldPost, err
-	}
-
-	return oldPost, nil
 }
 
 func (p *postStorageService) ReadPost(ctx context.Context, reqID int64, postID int64) (model.Post, error) {
@@ -205,12 +140,14 @@ func (p *postStorageService) ReadPosts(ctx context.Context, reqID int64, postIDs
 	}
 
 	postIDsNotCached := make(map[int64]bool)
-	var keys []string
 	for _, pid := range postIDs {
 		postIDsNotCached[pid] = true
-		keys = append(keys, strconv.FormatInt(pid, 10))
 	}
 
+	var keys []string
+	for _, pid := range postIDs {
+		keys = append(keys, strconv.FormatInt(pid, 10))
+	}
 	result, err := p.memCachedClient.GetMulti(keys)
 	if err != nil {
 		logger.Error("error reading keys from memcached", "msg", err.Error())
@@ -232,7 +169,6 @@ func (p *postStorageService) ReadPosts(ctx context.Context, reqID int64, postIDs
 	for _, post := range posts {
 		delete(postIDsNotCached, post.PostID)
 	}
-	logger.Debug("post ids not cached", "ids", postIDsNotCached)
 	if len(postIDsNotCached) != 0 {
 		collection := p.mongoClient.Database("post-storage").Collection("posts")
 

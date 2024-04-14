@@ -66,16 +66,15 @@ type Post struct {
 	// make post serializable
 	// by default, struct literal types are not serializable
 	weaver.AutoMarshal
-	PostID       	int64         `bson:"post_id"`
-	ReqID        	int64         `bson:"req_id"`
-	Creator      	Creator       `bson:"creator"`
-	Text         	string        `bson:"text"`
-	UserMentions 	[]UserMention `bson:"user_mentions"`
-	Media        	[]Media       `bson:"media"`
-	URLs         	[]URL         `bson:"urls"`
-	Timestamp    	int64         `bson:"timestamp"`
-	EditTimestmap	int64         `bson:"edit_timestamp"`
-	PostType     	PostType      `bson:"post_type"`
+	PostID       int64         `bson:"post_id"`
+	ReqID        int64         `bson:"req_id"`
+	Creator      Creator       `bson:"creator"`
+	Text         string        `bson:"text"`
+	UserMentions []UserMention `bson:"user_mentions"`
+	Media        []Media       `bson:"media"`
+	URLs         []URL         `bson:"urls"`
+	Timestamp    int64         `bson:"timestamp"`
+	PostType     PostType      `bson:"posttype"`
 }
 
 type TimelinePostInfo struct {
