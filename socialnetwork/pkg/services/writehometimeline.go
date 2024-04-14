@@ -57,11 +57,11 @@ func (w *writeHomeTimelineService) Init(ctx context.Context) error {
 	var wg sync.WaitGroup
 	wg.Add(w.Config().NumWorkers)
 	for i := 1; i <= w.Config().NumWorkers; i++ {
-		go func() {
+		go func(i int) {
 			defer wg.Done()
-			err := w.workerThread(ctx)
+			err := w.workerThread(ctx, i)
 			logger.Error("error in worker thread", "msg", err.Error())
-		}()
+		}(i)
 	}
 
 	logger.Info("write home timeline service running!", "region", w.Config().Region, "n_workers", w.Config().NumWorkers,
@@ -143,21 +143,21 @@ func (w *writeHomeTimelineService) WriteHomeTimeline(ctx context.Context, msg mo
 }
 
 // onReceivedWorker adds the post to all the post's subscribed users (followers, mentioned users, etc)
-func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []byte) error {
+func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, workerid int, body []byte) error {
 	logger := w.Logger(ctx)
 
 	var msg model.Message
 	err := json.Unmarshal(body, &msg)
 	if err != nil {
-		logger.Error("error parsing json message", "msg", err.Error())
+		logger.Error("error parsing json message", "workerid", workerid, "msg", err.Error())
 		return err
 	}
 	regionLabel := sn_metrics.RegionLabel{Region: w.Config().Region}
 	sn_metrics.ReceivedNotifications.Get(regionLabel).Add(1)
-	logger.Debug("received rabbitmq message", "post_id", msg.PostID, "msg", msg)
+	logger.Debug("received rabbitmq message", "workerid", workerid, "post_id", msg.PostID, "msg", msg)
 
 	spanContext, err := sn_trace.ParseSpanContext(msg.SpanContext)
-	if err != nil {		logger.Error("error parsing span context", "msg", err.Error())
+	if err != nil {		logger.Error("error parsing span context", "workerid", workerid, "msg", err.Error())
 		return err
 	}
 
@@ -172,7 +172,7 @@ func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, body []
 	return w.WriteHomeTimeline(ctx, msg)
 }
 
-func (w *writeHomeTimelineService) workerThread(ctx context.Context) error {
+func (w *writeHomeTimelineService) workerThread(ctx context.Context, workerid int) error {
 	logger := w.Logger(ctx)
 
 	ch, conn, err := storage.RabbitMQClient(ctx, w.Config().RabbitMQAddr, w.Config().RabbitMQPort)
@@ -185,33 +185,32 @@ func (w *writeHomeTimelineService) workerThread(ctx context.Context) error {
 
 	err = ch.ExchangeDeclare("write-home-timeline", "topic", false, false, false, false, nil)
 	if err != nil {
-		logger.Error("error declaring exchange for rabbitmq", "msg", err.Error())
+		logger.Error("error declaring exchange for rabbitmq", "workerid", workerid, "msg", err.Error())
 		return err
 	}
-
 	routingKey := fmt.Sprintf("write-home-timeline-%s", w.Config().Region)
 	_, err = ch.QueueDeclare(routingKey, false, false, false, false, nil)
 	if err != nil {
-		logger.Error("error declaring queue for rabbitmq", "msg", err.Error())
+		logger.Error("error declaring queue for rabbitmq", "workerid", workerid, "msg", err.Error())
 		return err
 	}
 
 	err = ch.QueueBind(routingKey, routingKey, "write-home-timeline", false, nil)
 	if err != nil {
-		logger.Error("error binding queue for rabbitmq", "msg", err.Error())
+		logger.Error("error binding queue for rabbitmq", "workerid", workerid, "msg", err.Error())
 		return err
 	}
 
 	msgs, err := ch.Consume(routingKey, "", true, false, false, false, nil)
 	if err != nil {
-		logger.Error("error consuming queue", "msg", err.Error())
+		logger.Error("error consuming queue", "workerid", workerid, "msg", err.Error())
 		return err
 	}
 
 	var forever chan struct{}
 	go func() {
 		for msg := range msgs {
-			err = w.onReceivedWorker(ctx, msg.Body)
+			err = w.onReceivedWorker(ctx, workerid, msg.Body)
 			if err != nil {
 				logger.Warn("error in worker thread", "msg", err.Error())
 			}
