@@ -38,9 +38,9 @@ type composePostService struct {
 	postStorageService  weaver.Ref[PostStorageService]
 	userTimelineService weaver.Ref[UserTimelineService]
 	_                   weaver.Ref[WriteHomeTimelineService]
-	amqChannel          *amqp.Channel
-	amqConnection       *amqp.Connection
 	redisClient         *redis.Client
+	amqClientPool 		*storage.RabbitMQClientPool
+	
 }
 
 type composePostServiceOptions struct {
@@ -61,15 +61,13 @@ type MethodLabels struct {
 
 func (c *composePostService) Init(ctx context.Context) error {
 	logger := c.Logger(ctx)
-
 	var err error
-	c.amqChannel, c.amqConnection, err = storage.RabbitMQClient(ctx, c.Config().RabbitMQAddr, c.Config().RabbitMQPort)
+	c.amqClientPool, err = storage.NewRabbitMQClientPool(ctx, c.Config().RabbitMQAddr, c.Config().RabbitMQPort, 0, 500)
 	if err != nil {
-		logger.Error(err.Error())
+		logger.Error("error initializing rabbitmq client pool", "msg", err.Error())
 		return err
 	}
 	c.redisClient = storage.RedisClient(c.Config().RedisAddr, c.Config().RedisPort)
-
 	logger.Info("compose post service running!", "region", c.Config().Region, "regions", c.Config().Regions,
 		"rabbitmq_addr", c.Config().RabbitMQAddr, "rabbitmq_port", c.Config().RabbitMQPort,
 		"redis_addr", c.Config().RedisAddr, "redis_port", c.Config().RedisPort,
@@ -301,7 +299,15 @@ func (c *composePostService) composeAndUpload(ctx context.Context, reqID int64) 
 
 func (c *composePostService) uploadHomeTimelineHelper(ctx context.Context, reqID int64, postID int64, userID int64, timestamp int64, userMentionIDs []int64) error {
 	logger := c.Logger(ctx)
-	err := c.amqChannel.ExchangeDeclare("write-home-timeline", "topic", false, false, false, false, nil)
+
+	ch, err := c.amqClientPool.Pop(ctx)
+	defer c.amqClientPool.Push(ch)
+
+	if err != nil {
+		logger.Error("error getting rabbitmq client from pool", "msg", err.Error())
+		panic(err)
+	}
+	err = ch.ExchangeDeclare("write-home-timeline", "topic", false, false, false, false, nil)
 	if err != nil {
 		logger.Error("error declaring exchange for rabbitmq", "msg", err.Error())
 		// errors close the channel so we force the service to restart
@@ -338,12 +344,13 @@ func (c *composePostService) uploadHomeTimelineHelper(ctx context.Context, reqID
 	}
 	for _, region := range c.Config().Regions {
 		routingKey := fmt.Sprintf("write-home-timeline-%s", region)
-		err = c.amqChannel.PublishWithContext(ctx, "write-home-timeline", routingKey, false, false, amqMsg)
+		err = ch.PublishWithContext(ctx, "write-home-timeline", routingKey, false, false, amqMsg)
 		if err != nil {
 			logger.Error("error publishing to queue", "routing_key", routingKey, "err", err.Error())
 		}
 
 	}
+	c.amqClientPool.Push(ch)
 
 	span = trace.SpanFromContext(ctx)
 	if trace.SpanContextFromContext(ctx).IsValid() {

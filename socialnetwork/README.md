@@ -108,7 +108,7 @@ weaver multi deploy weaver-local.toml
 Run benchmark:
 
 ``` zsh
-# default params: 2 threads, 2 clients, 5 duration (in seconds), 5 rate
+# default params: 2 threads, 2 clients, 30 duration (in seconds), 50 rate
 ./manager.py wrk2 --local
 
 # if you want to specify some params

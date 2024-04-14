@@ -42,6 +42,7 @@ type writeHomeTimelineService struct {
 	socialGraphService weaver.Ref[SocialGraphService]
 	mongoClient        *mongo.Client
 	redisClient        *redis.Client
+	amqClientPool 		*storage.RabbitMQClientPool
 }
 
 func (w *writeHomeTimelineService) Init(ctx context.Context) error {
@@ -49,10 +50,15 @@ func (w *writeHomeTimelineService) Init(ctx context.Context) error {
 	var err error
 	w.mongoClient, err = storage.MongoDBClient(ctx, w.Config().MongoDBAddr, w.Config().MongoDBPort)
 	if err != nil {
-		logger.Error(err.Error())
+		logger.Error("error initializing mongodb client", "msg", err.Error())
 		return err
 	}
 	w.redisClient = storage.RedisClient(w.Config().RedisAddr, w.Config().RedisPort)
+	w.amqClientPool, err = storage.NewRabbitMQClientPool(ctx, w.Config().RabbitMQAddr, w.Config().RabbitMQPort, 0, 500)
+	if err != nil {
+		logger.Error("error initializing rabbitmq client pool", "msg", err.Error())
+		return err
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(w.Config().NumWorkers)
@@ -175,13 +181,13 @@ func (w *writeHomeTimelineService) onReceivedWorker(ctx context.Context, workeri
 func (w *writeHomeTimelineService) workerThread(ctx context.Context, workerid int) error {
 	logger := w.Logger(ctx)
 
-	ch, conn, err := storage.RabbitMQClient(ctx, w.Config().RabbitMQAddr, w.Config().RabbitMQPort)
+	ch, err := w.amqClientPool.Pop(ctx)
+	defer w.amqClientPool.Push(ch)
+
 	if err != nil {
-		logger.Error(err.Error())
-		return err
+		logger.Error("error getting rabbitmq client from pool", "msg", err.Error())
+		panic(err)
 	}
-	defer conn.Close()
-	defer ch.Close()
 
 	err = ch.ExchangeDeclare("write-home-timeline", "topic", false, false, false, false, nil)
 	if err != nil {

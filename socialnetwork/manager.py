@@ -325,8 +325,7 @@ def gcp_init_social_graph(address):
 def gcp_metrics():
   metrics('multi', None)
 
-#./manager.py wrk2 --local -t 2 -c 4 -d 5 -r 50
-def gcp_wrk2(address, threads=4, conns=2, duration=5, rate=50):
+def gcp_wrk2(address, threads, conns, duration, rate):
   timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
   run_workload(timestamp, 'gke', f"http://{address}", threads, conns, duration, rate)
   metrics('gke', timestamp)
@@ -341,8 +340,7 @@ def local_init_social_graph(address):
   with local.env(HOST_EU=f"http://{address}:{APP_PORT}", HOST_US=f"http://{address}:{APP_PORT}"):
     local['./scripts/init_social_graph.py'] & FG
 
-#./manager.py wrk2 --local -t 2 -c 4 -d 5 -r 50
-def local_wrk2(address="localhost", threads=4, conns=2, duration=5, rate=50):
+def local_wrk2(address, threads, conns, duration, rate):
   timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
   run_workload(timestamp, 'local', f"http://{address}:{APP_PORT}", threads, conns, duration, rate)
   metrics('multi', timestamp, True)
@@ -389,8 +387,8 @@ if __name__ == "__main__":
     if cmd == 'wrk2':
       parser.add_argument('-t', '--threads', default=2, help="Number of threads")
       parser.add_argument('-c', '--conns', default=2, help="Number of connections")
-      parser.add_argument('-d', '--duration', default=5, help="Duration")
-      parser.add_argument('-r', '--rate', default=5, help="Number of requests per second")
+      parser.add_argument('-d', '--duration', default=30, help="Duration")
+      parser.add_argument('-r', '--rate', default=50, help="Number of requests per second")
     if cmd in ['init-social-graph', 'wrk2']:
       parser.add_argument('-a', '--address', default="localhost", help="Address of GKE load balancer")
       
