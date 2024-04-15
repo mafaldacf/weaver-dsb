@@ -17,3 +17,8 @@ variable "zone" {
   description   = "The zone where the instance is being created"
   type          = string
 }
+
+variable "script" {
+  description = "Name of the startup script"
+  type        = string
+}

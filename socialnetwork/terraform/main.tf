@@ -5,34 +5,73 @@ provider "google" {
   zone    = var.gcp_zone
 }
 
-module "gcp_create_instance_manager" {
+module "gcp_create_storage_instance_manager" {
   source        = "./modules/gcp_create_instance"
   instance_name = "weaver-dsb-db-manager"
   hostname      = "weaver-dsb-db-manager.prod"
   zone          = "europe-west3-a"
   image         = "debian-cloud/debian-11"
+  script        = "scripts/deps-storage.sh"
   providers = {
     google = google
   }
 }
 
-module "gcp_create_instance_eu" {
+module "gcp_create_storage_instance_eu" {
   source        = "./modules/gcp_create_instance"
   instance_name = "weaver-dsb-db-eu"
   hostname      = "weaver-dsb-db-eu.prod"
   zone          = "europe-west3-a"
   image         = "debian-cloud/debian-11"
+  script        = "scripts/deps-storage.sh"
   providers = {
     google = google
   }
 }
 
-module "gcp_create_instance-us" {
+module "gcp_create_storage_instance-us" {
   source        = "./modules/gcp_create_instance"
   instance_name = "weaver-dsb-db-us"
   hostname      = "weaver-dsb-db-us.prod"
   zone          = "us-central1-a"
   image         = "debian-cloud/debian-11"
+  script        = "scripts/deps-storage.sh"
+  providers = {
+    google = google
+  }
+}
+
+/* module "gcp_create_app_instance-manager" {
+  source        = "./modules/gcp_create_instance"
+  instance_name = "weaver-dsb-app-manager"
+  hostname      = "weaver-dsb-app-manager.prod"
+  zone          = "europe-west3-a"
+  image         = "debian-cloud/debian-11"
+  script        = "scripts/deps-app.sh"
+  providers = {
+    google = google
+  }
+} */
+
+module "gcp_create_app_instance-eu" {
+  source        = "./modules/gcp_create_instance"
+  instance_name = "weaver-dsb-app-eu"
+  hostname      = "weaver-dsb-app-eu.prod"
+  zone          = "europe-west3-a"
+  image         = "debian-cloud/debian-11"
+  script        = "scripts/deps-app.sh"
+  providers = {
+    google = google
+  }
+}
+
+module "gcp_create_app_instance-us" {
+  source        = "./modules/gcp_create_instance"
+  instance_name = "weaver-dsb-app-us"
+  hostname      = "weaver-dsb-app-us.prod"
+  zone          = "us-central1-a"
+  image         = "debian-cloud/debian-11"
+  script        = "scripts/deps-app.sh"
   providers = {
     google = google
   }

@@ -3,6 +3,8 @@ bs4
 toml
 pyyaml
 tqdm
+google-api-python-client
+plumbum
 # from scripts folder
 aiohttp
 asyncio

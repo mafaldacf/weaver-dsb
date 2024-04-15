@@ -21,3 +21,5 @@ socialnetwork/data/*
 socialnetwork/metrics.txt
 socialnetwork/evaluation/gke/*.txt
 socialnetwork/evaluation/local/*.txt
+socialnetwork/weaver-gcp-eu.toml
+socialnetwork/weaver-gcp-us.toml
