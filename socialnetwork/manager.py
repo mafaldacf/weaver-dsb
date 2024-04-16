@@ -31,7 +31,7 @@ GCP_COMPUTE                     = None
 # GCP app configuration
 # ---------------------
 # same as in terraform
-APP_FOLDER_NAME           = "weaver-dsb-socialnetwork"
+APP_FOLDER_NAME           = "socialnetwork"
 GCP_INSTANCE_APP_MANAGER  = "weaver-dsb-app-manager"
 GCP_INSTANCE_APP_EU       = "weaver-dsb-app-eu"
 GCP_INSTANCE_APP_US       = "weaver-dsb-app-us"
@@ -60,11 +60,11 @@ def load_gcp_profile():
       print(f"[ERROR] error loading gcp profile: {e}")
       exit(-1)
 
-def get_instance_ips(instance_name, zone):
+def get_instance_host(instance_name, zone):
   instance = GCP_COMPUTE.instances().get(project=GCP_PROJECT_ID, zone=zone, instance=instance_name).execute()
   network_interface = instance['networkInterfaces'][0]
   # public, private
-  return network_interface['accessConfigs'][0]['natIP'], network_interface['networkIP']
+  return network_interface['accessConfigs'][0]['natIP']
 
 def is_port_open(address, port):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -94,7 +94,7 @@ def run_workload(timestamp, deployment, url, threads, conns, duration, rate):
     wrk2 = local['./wrk2/wrk']
     output = wrk2['-D', 'exp', '-t', str(threads), '-c', str(conns), '-d', str(duration), '-L', '-s', './wrk2/scripts/social-network/compose-post.lua', f'{url}/wrk2-api/post/compose', '-R', str(rate)]()
   
-    filepath = f"evaluation/{deployment}/{timestamp}_workload.txt"
+    filepath = f"evaluation/{deployment}/{timestamp}.workload"
     with open(filepath, "w") as f:
       f.write(output)
 
@@ -136,7 +136,49 @@ def gen_weaver_config_gcp(public_ip_db_eu, public_ip_db_us):
   toml.dump(data, f)
   f.close()
 
-  print("[INFO] generated app config at 'weaver-gcp-eu.toml' and 'weaver-gcp-us.toml'")
+  print("[INFO] generated app config for GCP at 'weaver-gcp-eu.toml' and 'weaver-gcp-us.toml'")
+
+def gen_ansible_inventory_gcp():
+  from jinja2 import Environment
+  import textwrap
+
+  # datastores
+  host_db_manager = get_instance_host(GCP_INSTANCE_DB_MANAGER, GCP_ZONE_MANAGER)
+  host_db_eu = get_instance_host(GCP_INSTANCE_DB_EU, GCP_ZONE_EU)
+  host_db_us = get_instance_host(GCP_INSTANCE_DB_US, GCP_ZONE_US)
+  # app
+  #host_app_manager = get_instance_host(GCP_INSTANCE_APP_EU, GCP_ZONE_MANAGER)
+  host_app_eu = get_instance_host(GCP_INSTANCE_APP_EU, GCP_ZONE_EU)
+  host_app_us = get_instance_host(GCP_INSTANCE_APP_US, GCP_ZONE_US)
+
+  template = """
+    [swarm_manager]
+    weaver-dsb-db-manager   ansible_host={{ host_db_manager }} zone="europe-west3-a" user=mafaldacf
+
+    [swarm_workers]
+    weaver-dsb-db-eu        ansible_host={{ host_db_eu }} zone="europe-west3-a" user=mafaldacf
+    weaver-dsb-db-us        ansible_host={{ host_db_us }} zone="us-central1-a"  user=mafaldacf
+
+    [app_manager]
+    weaver-dsb-app-manager  ansible_host={{ host_app_manager }} zone="europe-west3-a" user=mafaldacf
+
+    [app_services]
+    weaver-dsb-app-eu       ansible_host={{ host_app_eu }}  region="eu" zone="europe-west3-a" user=mafaldacf app_port="9000"
+    weaver-dsb-app-us       ansible_host={{ host_app_us }}   region="us" zone="us-central1-a"  user=mafaldacf app_port="9001"
+  """
+  inventory = Environment().from_string(template).render({
+    'host_db_manager': host_db_manager,
+    'host_db_eu': host_db_eu,
+    'host_db_us': host_db_us,
+    'host_app_manager': '127.0.0.1',
+    'host_app_eu': host_app_eu,
+    'host_app_us': host_app_us,
+  })
+
+  filename = "ansible/inventory-gcp.cfg"
+  with open(filename, 'w') as f:
+    f.write(textwrap.dedent(inventory))
+  print(f"[INFO] generated ansible inventory for GCP at '{filename}'")
 
 # METRICS FORMAT
 #╭────────────────────────────────────────────────────────────────────────╮
@@ -215,7 +257,7 @@ def metrics(deployment_type='gke', timestamp=None, local=True):
   # save file if we ran workload
   if timestamp:
     eval_folder = 'local' if deployment_type == 'multi' else 'gke'
-    filepath = f"evaluation/{eval_folder}/{timestamp}_metrics.txt"
+    filepath = f"evaluation/{eval_folder}/{timestamp}.metrics"
     with open(filepath, "w") as f:
       f.write(results)
     print(f"[INFO] evaluation results saved at {filepath}")
@@ -237,13 +279,15 @@ def gcp_configure(bucket):
   try:
     print("[INFO] (2/3) configuring firewalls")
     # configure firewalls
+    # weaver-dsb-socialnetwork:
+    # tcp ports: 9000,9001
     # weaver-dsb-storage:
     # tcp ports: 27017,27018,15672,15673,5672,5673,6381,6382,6383,6384,6385,6386,6387,6388,11212,11213,11214,11215,11216,11217
     # weaver-dsb-swarm:
     # tcp ports: 2376,2377,7946
     # udp ports: 4789,7946
     firewalls = {
-      'weaver-dsb-socialnetwork': 'tcp:9000',
+      'weaver-dsb-socialnetwork': 'tcp:9000,tcp:9001',
       'weaver-dsb-storage': 'tcp:27017,tcp:27018,tcp:15672,tcp:15673,tcp:5672,tcp:5673,tcp:6381,tcp:6382,tcp:6383,tcp:6384,tcp:6385,tcp:6386,tcp:6387,tcp:6388,tcp:11212,tcp:11213,tcp:11214,tcp:11215,tcp:11216,tcp:11217',
       'weaver-dsb-swarm': 'tcp:2376,tcp:2377,tcp:7946,udp:4789,udp:7946'
     }
@@ -327,8 +371,8 @@ def gcp_deploy():
     print(f"[ERROR] docker images missing:\n\n{e}")
     exit(-1)
  
-  public_ip_db_eu, _ = get_instance_ips(GCP_INSTANCE_DB_EU, GCP_ZONE_EU)
-  public_ip_db_us, _ = get_instance_ips(GCP_INSTANCE_DB_US, GCP_ZONE_US)
+  public_ip_db_eu = get_instance_host(GCP_INSTANCE_DB_EU, GCP_ZONE_EU)
+  public_ip_db_us = get_instance_host(GCP_INSTANCE_DB_US, GCP_ZONE_US)
 
   gen_weaver_config_gcp(public_ip_db_eu, public_ip_db_us)
 
@@ -340,6 +384,8 @@ def gcp_deploy():
   #gcloud['compute', 'scp', '--zone', GCP_ZONE_MANAGER, 'manager.py', 'requirements.txt', f'{GCP_USERNAME}@{GCP_INSTANCE_APP_EU}:'] & FG
   #cmd = 'pip install -r requirements.txt'
   #gcloud['compute', 'ssh', GCP_INSTANCE_APP_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', cmd] & FG
+
+  gen_ansible_inventory_gcp()
     
 
 def gcp_info():
@@ -351,146 +397,42 @@ def gcp_info():
 
   print()
   print("--- DATASTORES ---")
-  public_ip_manager, _ = get_instance_ips(GCP_INSTANCE_DB_MANAGER, GCP_ZONE_MANAGER)
+  public_ip_manager = get_instance_host(GCP_INSTANCE_DB_MANAGER, GCP_ZONE_MANAGER)
   print("storage manager running @", public_ip_manager)
-  public_ip_eu, _ = get_instance_ips(GCP_INSTANCE_DB_EU, GCP_ZONE_EU)
+  public_ip_eu = get_instance_host(GCP_INSTANCE_DB_EU, GCP_ZONE_EU)
   print(f"storage in {GCP_ZONE_EU} running @", public_ip_eu)
-  public_ip_us, _ = get_instance_ips(GCP_INSTANCE_DB_US, GCP_ZONE_US)
+  public_ip_us = get_instance_host(GCP_INSTANCE_DB_US, GCP_ZONE_US)
   print(f"storage in {GCP_ZONE_US} running @", public_ip_us)
   print()
 
   print("--- SERVICES ---")
-  #public_ip_manager, _ = get_instance_ips(GCP_INSTANCE_APP_MANAGER, GCP_ZONE_MANAGER)
+  #public_ip_manager = get_instance_host(GCP_INSTANCE_APP_MANAGER, GCP_ZONE_MANAGER)
   #print("app manager running @", public_ip_manager)
-  public_ip_eu, _ = get_instance_ips(GCP_INSTANCE_APP_EU, GCP_ZONE_EU)
+  public_ip_eu = get_instance_host(GCP_INSTANCE_APP_EU, GCP_ZONE_EU)
   print(f"services in {GCP_ZONE_EU} running @", public_ip_eu)
-  public_ip_us, _ = get_instance_ips(GCP_INSTANCE_APP_US, GCP_ZONE_US)
+  public_ip_us = get_instance_host(GCP_INSTANCE_APP_US, GCP_ZONE_US)
   print(f"services in {GCP_ZONE_US} running @", public_ip_us)
   print()
   print()
   
 def gcp_run():
-  from plumbum.cmd import gcloud
+  from plumbum.cmd import ansible_playbook
+  gen_ansible_inventory_gcp()
 
-  # ------------------
-  # --- DATASTORES ---
-  # ------------------
-
-  # get public ip for each instance
-  public_ip_manager, _ = get_instance_ips(GCP_INSTANCE_DB_MANAGER, GCP_ZONE_MANAGER)
-  public_ip_eu, _ = get_instance_ips(GCP_INSTANCE_DB_EU, GCP_ZONE_EU)
-  public_ip_us, _ = get_instance_ips(GCP_INSTANCE_DB_US, GCP_ZONE_US)
-
-  # --- swarm manager
-  cmd = f'sudo docker swarm init --advertise-addr {public_ip_manager}:2377'
-  gcloud['compute', 'ssh', GCP_INSTANCE_DB_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', cmd] & FG
-
-  cmd = f'sudo docker network create --attachable -d overlay deathstarbench_network'
-  gcloud['compute', 'ssh', GCP_INSTANCE_DB_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', cmd] & FG
-
-  cmd = f'sudo docker swarm join-token --quiet worker > token.txt'
-  gcloud['compute', 'ssh', GCP_INSTANCE_DB_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', cmd] & FG
-
-  gcloud['compute', 'scp', f"{GCP_INSTANCE_DB_MANAGER}:token.txt", 'gcp/token.txt'] & FG
-
-  f = open('gcp/token.txt', 'r')
-  token = f.read().strip()
-  f.close()
-
-  # --- nodes
-  cmd = f'sudo docker swarm join --token {token} {public_ip_manager}:2377 --advertise-addr {public_ip_eu}'
-  gcloud['compute', 'ssh', GCP_INSTANCE_DB_EU, '--zone', GCP_ZONE_EU, '--command', cmd] & FG
-
-  cmd = f'sudo docker swarm join --token {token} {public_ip_manager}:2377 --advertise-addr {public_ip_us}'
-  gcloud['compute', 'ssh', GCP_INSTANCE_DB_US, '--zone', GCP_ZONE_US ,'--command', cmd] & FG
-
-  # --- manager
-  cmd = f'sudo docker stack deploy --with-registry-auth --compose-file ~/{APP_FOLDER_NAME}/docker-compose.yml socialnetwork'
-  gcloud['compute', 'ssh', GCP_INSTANCE_DB_MANAGER, '--command', cmd] & FG
-
-  print("[INFO] waiting 60 seconds for docker swarm...")
-  for _ in tqdm(range(30)):
+  ansible_playbook["ansible/start-datastores.yml", "-i", "ansible/inventory-gcp.cfg"] & FG
+  print("[INFO] waiting 60 seconds for datastores to initialize...")
+  for _ in tqdm(range(60)):
       sleep(1)
 
-  try:
-    cmd_nodes_ready_counter = "sudo docker node ls --format '{{.Hostname}}: {{.Status}}' | grep 'Ready' | wc -l"
-    cmd = f"if [ $({cmd_nodes_ready_counter}) -eq {NUM_DOCKER_SWARM_NODES} ]; then echo docker swarm nodes OK!; else exit 1; fi"
-    gcloud['compute', 'ssh', GCP_INSTANCE_DB_MANAGER, '--command', cmd] & FG
-  except Exception as e:
-    print(f"[ERROR] not all nodes are ready\n\n{e}")
-    exit(-1)
+  ansible_playbook["ansible/start-app.yml", "-i", "ansible/inventory-gcp.cfg"] & FG
 
-  try:
-    cmd_services_counter = "sudo docker stack services socialnetwork --format '{{.Name}}: {{.Replicas}}' | grep '1/1' | wc -l"
-    cmd = f"if [ $({cmd_services_counter}) -eq {NUM_DOCKER_SWARM_SERVICES} ]; then echo docker swarm services OK!; else exit 1; fi"
-    gcloud['compute', 'ssh', GCP_INSTANCE_DB_MANAGER, '--command', cmd] & FG
-  except Exception as e:
-    print(f"[ERROR] not all services are replicated\n\n{e}")
-    exit(-1)
-  
-  print("[WARNING] currently it is not possible to automatically run weaver in this script (will be later fixed), so you need to do it manually with the following steps")
-  
-
-  print("In two different terminals: (1) connect to gcp instance in europe, (2) generate and build the code, and (3) run socialnetwork\n")
-
-  print("> gcloud compute ssh --zone \"europe-west3-a\" --project \"weaver-dsb\" \"weaver-dsb-app-eu\"")
-  print(">> source ~/.bashrc && export PATH=$PATH:/usr/local/go/bin && export PATH=\"$PATH:$HOME/go/bin\"")
-  print(">> go generate && go build")
-  print(">> weaver multi deploy weaver-gcp-eu.toml\n")
-
-
-  print(">> gcloud compute ssh --zone \"us-central1-a\" --project \"weaver-dsb\" \"weaver-dsb-app-us\"")
-  print("source ~/.bashrc && export PATH=$PATH:/usr/local/go/bin && export PATH=\"$PATH:$HOME/go/bin\"")
-  print(">> go generate && go build")
-  print(">> weaver multi deploy weaver-gcp-us.toml\n")
-
-  exit(0)
-
-  # ------------------
-  # --- SERVICES -----
-  # ------------------
-  # prepare and build app
-  #tmux_cmd = f"tmux new-session -d socialnetwork 'export PATH=$PATH:/usr/local/go/bin && export GOPATH=$HOME/.go && export PATH=$PATH:$HOME/go/bin && export PATH=$PATH:$GOPATH/bin && rm -f socialnetwork && go generate && go build && weaver multi deploy weaver-gcp-eu.toml 2> /path/to/error.log'"
-  #gcloud['compute', 'ssh', GCP_INSTANCE_APP_EU, '--zone', GCP_ZONE_EU, '--command', tmux_cmd] & FG
-  #tmux_cmd = f"tmux new-session -d socialnetwork 'export PATH=$PATH:/usr/local/go/bin && export GOPATH=$HOME/.go && export PATH=$PATH:$HOME/go/bin && export PATH=$PATH:$GOPATH/bin && rm -f socialnetwork && go generate && go build && weaver multi deploy weaver-gcp-us.toml 2> /path/to/error.log'"
-  #gcloud['compute', 'ssh', GCP_INSTANCE_APP_US, '--zone', GCP_ZONE_US, '--command', tmux_cmd] & FG
-  #
-  #exit(0)
-  #
-  ## wait for weaver to initialize
-  #sleep(10)
-  #
-  #public_ip_app_eu, _ = get_instance_ips(GCP_INSTANCE_APP_EU, GCP_ZONE_EU)
-  #public_ip_app_us, _ = get_instance_ips(GCP_INSTANCE_APP_US, GCP_ZONE_US)
-  #if not is_port_open(public_ip_app_eu, APP_PORT):
-  #  print(f"[ERROR] services in europe did not start: wrk2 api not listening for connections at port {APP_PORT}")
-  #  exit(-1)
-  #if not is_port_open(public_ip_app_us, APP_PORT):
-  #  print(f"[ERROR] services in us did not start: wrk2 api not listening for connections at port {APP_PORT}")
-  #  exit(-1)
-  
+def gcp_stop():
+  from plumbum.cmd import ansible_playbook
+  ansible_playbook["ansible/stop-datastores.yml", "-i", "ansible/inventory-gcp.cfg"] & FG
+  ansible_playbook["ansible/stop-app.yml", "-i", "ansible/inventory-gcp.cfg"] & FG
 
 def gcp_restart():
-  from plumbum.cmd import gcloud
-  # ------------------
-  # --- DATASTORES ---
-  # ------------------
-  # force nodes to leave
-  cmd = f'sudo docker swarm leave'
-  gcloud['compute', 'ssh', GCP_INSTANCE_DB_EU, '--zone', GCP_ZONE_EU, '--command', cmd] & FG
-  gcloud['compute', 'ssh', GCP_INSTANCE_DB_US, '--zone', GCP_ZONE_US, '--command', cmd] & FG
-  cmd = f'sudo docker swarm leave --force'
-  gcloud['compute', 'ssh', GCP_INSTANCE_DB_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', cmd] & FG
-
-  # ------------------
-  # --- SERVICES -----
-  # ------------------
-  # kill previous tmux session
-  tmux_cmd = f"tmux kill-session -t socialnetwork"
-  gcloud['compute', 'ssh', GCP_INSTANCE_APP_EU, '--zone', GCP_ZONE_EU, '--command', tmux_cmd] & FG
-  gcloud['compute', 'ssh', GCP_INSTANCE_APP_US, '--zone', GCP_ZONE_US, '--command', tmux_cmd] & FG
-  
-  # run everything again
+  gcp_stop()
   gcp_run()
 
   
@@ -498,17 +440,18 @@ def gcp_clean():
   from plumbum.cmd import terraform
   terraform['-chdir=./terraform', 'destroy'] & FG
 
-def gcp_init_social_graph(address):
+def gcp_init_social_graph():
   pass
 
 def gcp_metrics():
   metrics('multi', None)
 
-def gcp_wrk2(address, threads, conns, duration, rate):
-  public_ip_eu, _ = get_instance_ips(GCP_INSTANCE_APP_EU, GCP_ZONE_EU)
+def gcp_wrk2(threads, conns, duration, rate):
+  host_eu = get_instance_host(GCP_INSTANCE_APP_EU, GCP_ZONE_EU)
   timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-  run_workload(timestamp, 'gke', f"http://{public_ip_eu}", threads, conns, duration, rate)
-  metrics('gke', timestamp)
+  run_workload(timestamp, 'gcp', f"http://{host_eu}:{APP_PORT}", threads, conns, duration, rate)
+  #FIXME
+  #metrics('gcp', timestamp)
 
 
 # --------------------
@@ -517,12 +460,12 @@ def gcp_wrk2(address, threads, conns, duration, rate):
 
 def local_init_social_graph(address):
   from plumbum import local
-  with local.env(HOST_EU=f"http://{address}:{APP_PORT}", HOST_US=f"http://{address}:{APP_PORT}"):
+  with local.env(HOST_EU=f"http://127.0.0.1:{APP_PORT}", HOST_US=f"http://127.0.0.1:{APP_PORT}"):
     local['./scripts/init_social_graph.py'] & FG
 
-def local_wrk2(address, threads, conns, duration, rate):
+def local_wrk2(threads, conns, duration, rate):
   timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-  run_workload(timestamp, 'local', f"http://{address}:{APP_PORT}", threads, conns, duration, rate)
+  run_workload(timestamp, 'local', f"http://127.0.0.1:{APP_PORT}", threads, conns, duration, rate)
   metrics('multi', timestamp, True)
 
 def local_metrics():
@@ -559,7 +502,7 @@ if __name__ == "__main__":
 
   commands = [
     # gcp
-    'configure', 'build', 'deploy', 'run', 'info', 'restart', 'clean', 'info'
+    'configure', 'build', 'deploy', 'run', 'stop', 'info', 'restart', 'clean', 'info',
     # datastores
     'storage-build', 'storage-deploy', 'storage-run', 'storage-info', 'storage-clean',
     # eval
@@ -574,8 +517,6 @@ if __name__ == "__main__":
       parser.add_argument('-c', '--conns', default=2, help="Number of connections")
       parser.add_argument('-d', '--duration', default=30, help="Duration")
       parser.add_argument('-r', '--rate', default=50, help="Number of requests per second")
-    if cmd in ['init-social-graph', 'wrk2']:
-      parser.add_argument('-a', '--address', default="localhost", help="Address of GKE load balancer")
     if cmd == 'configure':
       parser.add_argument('-b', '--bucket', help="Name of the bucket")
       

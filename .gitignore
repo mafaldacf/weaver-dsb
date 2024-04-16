@@ -20,6 +20,14 @@ socialnetwork/.TODO
 socialnetwork/data/*
 socialnetwork/metrics.txt
 socialnetwork/evaluation/gke/*.txt
+socialnetwork/evaluation/gke/*.metrics
+socialnetwork/evaluation/gke/*.workload
+socialnetwork/evaluation/gcp/*.txt
+socialnetwork/evaluation/gcp/*.metrics
+socialnetwork/evaluation/gcp/*.workload
 socialnetwork/evaluation/local/*.txt
+socialnetwork/evaluation/local/*.metrics
+socialnetwork/evaluation/local/*.workload
 socialnetwork/weaver-gcp-eu.toml
 socialnetwork/weaver-gcp-us.toml
+socialnetwork/ansible/inventory-gcp.cfg

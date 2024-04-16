@@ -1,0 +1,13 @@
+---
+- hosts: app_services
+  gather_facts: no
+  any_errors_fatal: true
+  vars_files: vars.yml
+  tasks:
+    - name: Stop socialnetwork app
+      shell: /usr/bin/tmux kill-session -t socialnetwork
+      register: status
+      retries: 5
+      delay: 10
+      until: (status.rc == 0 or 'no server running' in status.stderr)
+      ignore_errors: True

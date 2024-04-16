@@ -97,10 +97,10 @@ region              = "europe-west3"
 # ----------
 
 [single]
-listeners.wrk2 = {address = "127.0.0.1:9000"}
+listeners.wrk2 = {address = "0.0.0.0:9000"}
 
 [multi]
-listeners.wrk2 = {address = "127.0.0.1:9000"}
+listeners.wrk2 = {address = "0.0.0.0:9000"}
 
 [serviceweaver]
 binary = "./socialnetwork"

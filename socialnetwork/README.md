@@ -4,10 +4,22 @@ Implementation of [DeathStarBench](https://github.com/delimitrou/DeathStarBench)
 
 ## Requirements
 
-- [Golang >= 1.21](https://go.dev/doc/install)
-- [Service Weaver](https://serviceweaver.dev/docs.html#installation)
+- [Golang >= 1.21.5](https://go.dev/doc/install)
+```zsh
+# install Golang v1.21.5
+sudo wget https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz
+echo 'export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin:$HOME/.go/bin' >> ~/.bashrc
+source ~/.bashrc
+```
+- [Service Weaver >= v0.22.0](https://serviceweaver.dev/docs.html#installation)
+```zsh
+# install Weaver 0.22.0
+go install github.com/ServiceWeaver/weaver/cmd/weaver@v0.22.0
+```
 - [Terraform >= v1.6.6](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli)
 - [GCloud Cli](https://cloud.google.com/sdk/docs/install)
+
 
 Install python packages to use the `manager` script:
 ```zsh
@@ -93,13 +105,15 @@ weaver multi deploy weaver-local.toml
 ./manager.py init-social-graph --local
 ```
 
-Run benchmark (automatically gathers metrics in new file in `evaluation` directory):
+Run workload (2 threads, 2 clients, 30 duration, 50 rate) and automatically gather metrics to `evaluation` directory:
 
 ``` zsh
 # default params: 2 threads, 2 clients, 30 duration (in seconds), 50 rate
 ./manager.py wrk2 --local
+```
 
-# if you want to specify some params
+If you want, you can specify other parameters:
+``` zsh
 ./manager.py wrk2 --local -t THREADS -c CLIENTS -d DURATION -r RATE
 # values used antipode evaluation:
 # threads, clients, rate
@@ -115,7 +129,7 @@ If you want to just observe metrics:
 ./manager.py metrics --local
 ```
 
-Clean datastores:
+Stop datastores:
 ``` zsh
 ./manager.py storage-clean --local
 ```
@@ -124,7 +138,7 @@ Clean datastores:
 
 #### Deploying in GCP machines for app + datastores
 
-Build, deploy, and run your application
+Build, deploy, and run your application (datastores + services)
 ``` zsh
 ./manager.py build --gcp
 ./manager.py deploy --gcp
@@ -136,20 +150,37 @@ If you want to display some info
 ./manager.py info --gcp
 ```
 
-Run workload for benchmarking application and print metrics
+Run workload (2 threads, 2 clients, 30 duration, 50 rate) and automatically gather metrics to `evaluation` directory:
+[**NOTE**] Metrics command is currently not working for GCP - TODO: obtain info from gcp instances
+
 ``` zsh
-# default params: 2 threads, 2 clients, 5 duration (in seconds), 5 rate
-# values used antipode evaluation:  threads; 4 clients; 300 duration; 50, 100, 125, 150, and 160 rates
-./manager.py wrk2 --gcp [-t THREADS] [-c CLIENTS] [-d DURATION] [-r RATE]
+# default params: 2 threads, 2 clients, 30 duration (in seconds), 50 rate
+./manager.py wrk2 --local
+```
+
+If you want, you can specify other parameters:
+``` zsh
+./manager.py wrk2 --local -t THREADS -c CLIENTS -d DURATION -r RATE
+# values used antipode evaluation:
+# threads, clients, rate
+#   2        4        50
+#   2        4        100
+#   2        4        125
+#   2        4        150
+#   2        4        160
+```
+
+If you want to just observe metrics:
+``` zsh
 ./manager.py metrics --gcp
 ```
 
-If you want to restart your metrics or storages, do:
+Restart datastores and application:
 ``` zsh
 ./manager.py restart --gcp
 ```
 
-Otherwise, to terminate storages and application at the end, do:
+Otherwise, to datastores storages and application at the end, do:
 
 ``` zsh
 ./manager.py clean --gcp

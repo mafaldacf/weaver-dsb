@@ -1,0 +1,26 @@
+---
+- hosts: swarm_workers
+  gather_facts: no
+  any_errors_fatal: true
+  vars_files: vars.yml
+  tasks:
+    - name: Remove workers from swarm
+      shell: sudo docker swarm leave -f
+      register: worker_status
+      retries: 5
+      delay: 10
+      until: (worker_status.rc == 0 or 'This node is not part of a swarm' in worker_status.stderr)
+      ignore_errors: True
+
+- hosts: swarm_manager
+  gather_facts: no
+  any_errors_fatal: true
+  vars_files: vars.yml
+  tasks:
+    - name: Remove manager from swarm
+      shell: sudo docker swarm leave -f
+      register: manager_status
+      retries: 5
+      delay: 10
+      until: (manager_status.rc == 0 or 'This node is not part of a swarm' in manager_status.stderr)
+      ignore_errors: True
