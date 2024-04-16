@@ -405,7 +405,7 @@ def gcp_wrk2(threads, conns, duration, rate):
 def local_init_social_graph():
   from plumbum import local
   with local.env(HOST_EU=f"http://127.0.0.1:{APP_PORT}", HOST_US=f"http://127.0.0.1:{APP_PORT}"):
-    local['./scripts/init_social_graph.py'] & FG
+    local['./social-graph/init_social_graph.py'] & FG
 
 def local_wrk2(threads, conns, duration, rate):
   timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")

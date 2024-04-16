@@ -5,6 +5,6 @@ pyyaml
 tqdm
 google-api-python-client
 plumbum
-# from scripts folder
+# from social-graph folder
 aiohttp
 asyncio

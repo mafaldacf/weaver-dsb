@@ -68,7 +68,7 @@ if __name__ == '__main__':
     exit(-1)
 
   if len(sys.argv) < 2:
-    filename = "datasets/social-graph/socfb-Reed98/socfb-Reed98.mtx"
+    filename = "social-graph/datasets/socfb-Reed98/socfb-Reed98.mtx"
   else:
     filename = sys.argv[1]
   with open(filename, 'r') as file:
