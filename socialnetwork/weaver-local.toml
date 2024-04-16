@@ -58,17 +58,7 @@ mongodb_port        = 27017
 redis_port          = 6383
 region              = "europe-west3"
 
-#["socialnetwork/pkg/services/WriteHomeTimelineService"]
-#rabbitmq_address    = "localhost"
-#mongodb_address     = "localhost"
-#redis_address       = "localhost" #uses HomeTimelineService cache (redis)
-#mongodb_port        = 27017
-#redis_port          = 6382
-#rabbitmq_port       = 5672
-#num_workers         = 16
-#region              = "europe-west3"
-
-# WRITE HOME TIMELINE ACCESSES STORAGES IN "US"
+# we simulate write home timeline at "us-central-1" by accessible database replicas
 ["socialnetwork/pkg/services/WriteHomeTimelineService"]
 rabbitmq_address    = "localhost"
 mongodb_address     = "localhost"
@@ -104,8 +94,4 @@ listeners.wrk2 = {address = "0.0.0.0:9000"}
 
 [serviceweaver]
 binary = "./socialnetwork"
-name = "socialnetwork-eu"
-
-[gke]
-regions = ["europe-west3"]
-listeners.wrk2 = {public_hostname = "weaver.dsb.socialnetwork.eu"}
+name = "socialnetwork-local"

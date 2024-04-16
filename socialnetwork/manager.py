@@ -5,7 +5,6 @@ from google.oauth2 import service_account
 import sys
 from plumbum import FG
 import toml
-import yaml
 from time import sleep
 from tqdm import tqdm
 import datetime
@@ -23,7 +22,6 @@ BASE_DIR                    = os.path.dirname(os.path.realpath(__file__))
 # TBD
 GCP_PROJECT_ID                  = None
 GCP_USERNAME                    = None
-GCP_BUCKET   = None
 GCP_CREDENTIALS                 = None
 GCP_COMPUTE                     = None
 
@@ -32,7 +30,7 @@ GCP_COMPUTE                     = None
 # ---------------------
 # same as in terraform
 APP_FOLDER_NAME           = "socialnetwork"
-GCP_INSTANCE_APP_MANAGER  = "weaver-dsb-app-manager"
+GCP_INSTANCE_APP_WRK2     = "weaver-dsb-app-wrk2"
 GCP_INSTANCE_APP_EU       = "weaver-dsb-app-eu"
 GCP_INSTANCE_APP_US       = "weaver-dsb-app-us"
 GCP_INSTANCE_DB_MANAGER   = "weaver-dsb-db-manager"
@@ -47,18 +45,23 @@ GCP_ZONE_US               = "us-central1-a"
 # --------------------
 
 def load_gcp_profile():
-  global GCP_PROJECT_ID, GCP_USERNAME, GCP_BUCKET, GCP_COMPUTE
+  import yaml
+  global GCP_PROJECT_ID, GCP_USERNAME, GCP_COMPUTE
   try:
     with open('gcp/config.yml', 'r') as file:
       config = yaml.safe_load(file)
       GCP_PROJECT_ID  = str(config['project_id'])
       GCP_USERNAME    = str(config['username'])
-      GCP_BUCKET      = str(config['bucket_name'])
     GCP_CREDENTIALS   = service_account.Credentials.from_service_account_file("gcp/credentials.json")
     GCP_COMPUTE = googleapiclient.discovery.build('compute', 'v1', credentials=GCP_CREDENTIALS)
   except Exception as e:
       print(f"[ERROR] error loading gcp profile: {e}")
       exit(-1)
+
+def display_progress_bar(duration, info_message):
+  print(f"[INFO] {info_message} for {duration} seconds...")
+  for _ in tqdm(range(int(duration))):
+    sleep(1)
 
 def get_instance_host(instance_name, zone):
   instance = GCP_COMPUTE.instances().get(project=GCP_PROJECT_ID, zone=zone, instance=instance_name).execute()
@@ -80,21 +83,16 @@ def run_workload(timestamp, deployment, url, threads, conns, duration, rate):
     print(f"[ERROR] error running workload: '{BASE_DIR}/wrk2/wrk' file does not exist")
     exit(-1)
 
-  # display progress bar
-  def tqdm_progress(duration):
-      print(f"[INFO] running workload for {duration} seconds...")
-      for _ in tqdm(range(int(duration))):
-          sleep(1)
-
-  progress_thread = threading.Thread(target=tqdm_progress, args=(duration,))
+  progress_thread = threading.Thread(target=display_progress_bar, args=(duration, "running workload",))
   progress_thread.start()
 
   from plumbum import local
   with local.env(HOST_EU=url, HOST_US=url):
     wrk2 = local['./wrk2/wrk']
     output = wrk2['-D', 'exp', '-t', str(threads), '-c', str(conns), '-d', str(duration), '-L', '-s', './wrk2/scripts/social-network/compose-post.lua', f'{url}/wrk2-api/post/compose', '-R', str(rate)]()
-  
-    filepath = f"evaluation/{deployment}/{timestamp}.workload"
+
+    filepath = f"evaluation/{deployment}/{timestamp}/workload.out"
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
     with open(filepath, "w") as f:
       f.write(output)
 
@@ -104,39 +102,57 @@ def run_workload(timestamp, deployment, url, threads, conns, duration, rate):
   progress_thread.join()
   return output
 
-def gen_weaver_config_gcp(public_ip_db_eu, public_ip_db_us):
-  data = toml.load("weaver-local-eu.toml")
+def gen_weaver_config_gcp():
+  host_eu = get_instance_host(GCP_INSTANCE_DB_EU, GCP_ZONE_EU)
+  host_us = get_instance_host(GCP_INSTANCE_DB_US, GCP_ZONE_US)
+
+  data = toml.load("deploy/weaver/weaver-template-eu.toml")
 
   # europe
   for _, config in data.items():
     if 'mongodb_address' in config:
-      config['mongodb_address'] = public_ip_db_eu
+      config['mongodb_address'] = host_eu
     if 'redis_address' in config:
-      config['redis_address'] = public_ip_db_eu
+      config['redis_address'] = host_eu
     if 'rabbitmq_address' in config:
-      config['rabbitmq_address'] = public_ip_db_eu
+      config['rabbitmq_address'] = host_eu
     if 'memcached_address' in config:
-      config['memcached_address'] = public_ip_db_eu
-  f = open("weaver-gcp-eu.toml",'w')
+      config['memcached_address'] = host_eu
+  filepath_eu = "deploy/tmp/weaver-gcp-eu.toml"
+  f = open(filepath_eu,'w')
   toml.dump(data, f)
   f.close()
 
   # us
-  data = toml.load("weaver-local-us.toml")
+  data = toml.load("deploy/weaver/weaver-template-us.toml")
   for _, config in data.items():
     if 'mongodb_address' in config:
-      config['mongodb_address'] = public_ip_db_us
+      config['mongodb_address'] = host_us
     if 'redis_address' in config:
-      config['redis_address'] = public_ip_db_us
+      config['redis_address'] = host_us
     if 'rabbitmq_address' in config:
-      config['rabbitmq_address'] = public_ip_db_us
+      config['rabbitmq_address'] = host_us
     if 'memcached_address' in config:
-      config['memcached_address'] = public_ip_db_us
-  f = open("weaver-gcp-us.toml",'w')
+      config['memcached_address'] = host_us
+  filepath_us = "deploy/tmp/weaver-gcp-us.toml"
+  f = open(filepath_us,'w')
   toml.dump(data, f)
   f.close()
 
-  print("[INFO] generated app config for GCP at 'weaver-gcp-eu.toml' and 'weaver-gcp-us.toml'")
+  print(f"[INFO] generated app config for GCP at {filepath_eu} and {filepath_us}")
+
+def gen_ansible_vars(workload_timestamp=None, deployment_type=None):
+  import yaml
+
+  with open('deploy/ansible/vars.yml', 'r') as file:
+    data = yaml.safe_load(file)
+
+  data['base_dir'] = BASE_DIR
+  data['workload_timestamp'] = workload_timestamp if workload_timestamp else None
+  data['deployment_type'] = deployment_type if deployment_type else None
+
+  with open('deploy/tmp/ansible-vars.yml', 'w') as file:
+    yaml.dump(data, file)
 
 def gen_ansible_inventory_gcp():
   from jinja2 import Environment
@@ -144,38 +160,38 @@ def gen_ansible_inventory_gcp():
 
   # datastores
   host_db_manager = get_instance_host(GCP_INSTANCE_DB_MANAGER, GCP_ZONE_MANAGER)
-  host_db_eu = get_instance_host(GCP_INSTANCE_DB_EU, GCP_ZONE_EU)
-  host_db_us = get_instance_host(GCP_INSTANCE_DB_US, GCP_ZONE_US)
+  host_db_eu      = get_instance_host(GCP_INSTANCE_DB_EU, GCP_ZONE_EU)
+  host_db_us      = get_instance_host(GCP_INSTANCE_DB_US, GCP_ZONE_US)
   # app
-  #host_app_manager = get_instance_host(GCP_INSTANCE_APP_EU, GCP_ZONE_MANAGER)
-  host_app_eu = get_instance_host(GCP_INSTANCE_APP_EU, GCP_ZONE_EU)
-  host_app_us = get_instance_host(GCP_INSTANCE_APP_US, GCP_ZONE_US)
+  host_app_wrk2   = get_instance_host(GCP_INSTANCE_APP_WRK2, GCP_ZONE_MANAGER)
+  host_app_eu     = get_instance_host(GCP_INSTANCE_APP_EU, GCP_ZONE_EU)
+  host_app_us     = get_instance_host(GCP_INSTANCE_APP_US, GCP_ZONE_US)
 
   template = """
     [swarm_manager]
-    weaver-dsb-db-manager   ansible_host={{ host_db_manager }} zone="europe-west3-a" user=mafaldacf
+    weaver-dsb-db-manager ansible_host={{ host_db_manager }} user=mafaldacf
 
     [swarm_workers]
-    weaver-dsb-db-eu        ansible_host={{ host_db_eu }} zone="europe-west3-a" user=mafaldacf
-    weaver-dsb-db-us        ansible_host={{ host_db_us }} zone="us-central1-a"  user=mafaldacf
+    weaver-dsb-db-eu      ansible_host={{ host_db_eu }} user=mafaldacf
+    weaver-dsb-db-us      ansible_host={{ host_db_us }} user=mafaldacf
 
-    [app_manager]
-    weaver-dsb-app-manager  ansible_host={{ host_app_manager }} zone="europe-west3-a" user=mafaldacf
+    [app_wrk2]
+    weaver-dsb-app-wrk2   ansible_host={{ host_app_wrk2 }} user=mafaldacf
 
     [app_services]
-    weaver-dsb-app-eu       ansible_host={{ host_app_eu }}  region="eu" zone="europe-west3-a" user=mafaldacf app_port="9000"
-    weaver-dsb-app-us       ansible_host={{ host_app_us }}   region="us" zone="us-central1-a"  user=mafaldacf app_port="9001"
+    weaver-dsb-app-eu     ansible_host={{ host_app_eu }} user=mafaldacf region="eu" app_port="9000"
+    weaver-dsb-app-us     ansible_host={{ host_app_us }} user=mafaldacf region="us" app_port="9001"
   """
   inventory = Environment().from_string(template).render({
-    'host_db_manager': host_db_manager,
-    'host_db_eu': host_db_eu,
-    'host_db_us': host_db_us,
-    'host_app_manager': '127.0.0.1',
-    'host_app_eu': host_app_eu,
-    'host_app_us': host_app_us,
+    'host_db_manager':  host_db_manager,
+    'host_db_eu':       host_db_eu,
+    'host_db_us':       host_db_us,
+    'host_app_wrk2':    host_app_wrk2,
+    'host_app_eu':      host_app_eu,
+    'host_app_us':      host_app_us,
   })
 
-  filename = "ansible/inventory-gcp.cfg"
+  filename = "deploy/tmp/ansible-inventory-gcp.cfg"
   with open(filename, 'w') as f:
     f.write(textwrap.dedent(inventory))
   print(f"[INFO] generated ansible inventory for GCP at '{filename}'")
@@ -203,82 +219,82 @@ def gen_ansible_inventory_gcp():
 #|  ...              | ...                | ...                   | ...   |
 #╰───────────────────┴────────────────────┴───────────────────────┴───────╯
 
-def metrics(deployment_type='gke', timestamp=None, local=True):
-  from plumbum.cmd import weaver, grep
+# Possible commands to retrieve metrics:
+# weaver multi metrics sn_compose_post_duration_ms
+# weaver multi metrics sn_composed_posts
+# weaver multi metrics sn_write_post_duration_ms
+# weaver multi metrics sn_queue_duration_ms
+# weaver multi metrics sn_received_notifications
+# weaver multi metrics sn_inconsistencies
+def metrics(deployment, timestamp=None):
+  import yaml
+  from plumbum.cmd import weaver
   import re
-
-  primary_region = 'europe-west3'
-  secondary_region = 'us-central-1' if not local else primary_region
 
   pattern = re.compile(r'^.*│.*│.*│.*│\s*(\d+\.?\d*)\s*│.*$', re.MULTILINE)
 
-  def get_filter_metrics(deployment_type, metric_name, region):
-    #return (weaver[deployment_type, 'metrics', metric_name] | grep[region])()
-    return weaver[deployment_type, 'metrics', metric_name]()
+  def get_filter_metrics(metric_name):
+    return weaver['multi', 'metrics', metric_name]()
+
+  # Steps:
+  # 1. get desired metrics that will be listed for each process using get_filter_metrics
+  # 2. then average the values of all processes which is ok since weaver metrics are limited to averages
 
   # wkr2 api
-  compose_post_duration_metrics = get_filter_metrics(deployment_type, 'sn_compose_post_duration_ms', primary_region)
+  compose_post_duration_metrics = get_filter_metrics('sn_compose_post_duration_ms')
   compose_post_duration_metrics_values = pattern.findall(compose_post_duration_metrics)
-  compose_post_duration_avg_ms = sum(float(value) for value in compose_post_duration_metrics_values)/len(compose_post_duration_metrics_values)
+  compose_post_duration_avg_ms = sum(float(value) for value in compose_post_duration_metrics_values)/len(compose_post_duration_metrics_values) if compose_post_duration_metrics_values else 0
   # compose post service
-  composed_posts_metrics = get_filter_metrics(deployment_type, 'sn_composed_posts', primary_region)
+  composed_posts_metrics = get_filter_metrics('sn_composed_posts')
   composed_posts_count = sum(int(value) for value in pattern.findall(composed_posts_metrics))
   # post storage service
-  write_post_duration_metrics = get_filter_metrics(deployment_type, 'sn_write_post_duration_ms', primary_region)
+  write_post_duration_metrics = get_filter_metrics('sn_write_post_duration_ms')
   write_post_duration_metrics_values = pattern.findall(write_post_duration_metrics)
-  write_post_duration_avg_ms = sum(float(value) for value in write_post_duration_metrics_values)/len(write_post_duration_metrics_values)
+  write_post_duration_avg_ms = sum(float(value) for value in write_post_duration_metrics_values)/len(write_post_duration_metrics_values) if write_post_duration_metrics_values else 0
   # write home timeline service
-  queue_duration_metrics = get_filter_metrics(deployment_type, 'sn_queue_duration_ms', secondary_region)
+  queue_duration_metrics = get_filter_metrics('sn_queue_duration_ms')
   queue_duration_metrics_values = pattern.findall(queue_duration_metrics)
-  queue_duration_avg_ms = sum(float(value) for value in queue_duration_metrics_values)/len(queue_duration_metrics_values)
-  received_notifications_metrics = get_filter_metrics(deployment_type, 'sn_received_notifications', secondary_region)
+  queue_duration_avg_ms = sum(float(value) for value in queue_duration_metrics_values)/len(queue_duration_metrics_values) if queue_duration_metrics_values else 0
+  received_notifications_metrics = get_filter_metrics('sn_received_notifications')
   received_notifications_count = sum(int(value) for value in pattern.findall(received_notifications_metrics))
-  inconsitencies_metrics = get_filter_metrics(deployment_type, 'sn_inconsistencies', secondary_region)
-  inconsitencies_metrics = weaver[deployment_type, 'metrics', 'sn_inconsistencies']()
+  inconsitencies_metrics = get_filter_metrics('sn_inconsistencies')
   inconsistencies_count = sum(int(value) for value in pattern.findall(inconsitencies_metrics))
+  
+  pc_inconsistencies = "{:.2f}".format((inconsistencies_count / received_notifications_count) * 100) if received_notifications_count != 0 else 0
+  #pc_received_notifications = "{:.2f}".format((received_notifications_count / composed_posts_count) * 100) if composed_posts_count else 0
 
-  pc_inconsistencies = "{:.2f}".format((inconsistencies_count / composed_posts_count) * 100)
-  pc_received_notifications = "{:.2f}".format((received_notifications_count / composed_posts_count) * 100)
   compose_post_duration_avg_ms = "{:.2f}".format(compose_post_duration_avg_ms)
   write_post_duration_avg_ms = "{:.2f}".format(write_post_duration_avg_ms)
   queue_duration_avg_ms = "{:.2f}".format(queue_duration_avg_ms)
 
-  results = f"""
-    # composed posts:\t\t\t{composed_posts_count}
-    # received notifications @ US:\t{received_notifications_count} ({pc_received_notifications}%)
-    # inconsistencies @ US:\t\t{inconsistencies_count}
-    % inconsistencies @ US:\t\t{pc_inconsistencies}%
-    > avg. compose post duration:\t{compose_post_duration_avg_ms}ms
-    > avg. write post duration:\t\t{write_post_duration_avg_ms}ms
-    > avg. queue duration @ US:\t\t{queue_duration_avg_ms}ms
-  """
-  print(results)
+  results = {
+    'num_composed_posts': int(composed_posts_count),
+    'num_received_notifications': int(received_notifications_count),
+    'num_inconsistencies': int(inconsistencies_count),
+    'per_inconsistencies': float(pc_inconsistencies),
+    'avg_compose_post_duration_ms': float(compose_post_duration_avg_ms),
+    'avg_write_post_duration_msg': float(write_post_duration_avg_ms),
+    'avg_queue_duration_ms': float(queue_duration_avg_ms),
+  }
 
   # save file if we ran workload
   if timestamp:
-    eval_folder = 'local' if deployment_type == 'multi' else 'gke'
-    filepath = f"evaluation/{eval_folder}/{timestamp}.metrics"
-    with open(filepath, "w") as f:
-      f.write(results)
+    filepath = f"evaluation/{deployment}/{timestamp}/metrics.yml"
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    with open(filepath, 'w') as outfile:
+      yaml.dump(results, outfile, default_flow_style=False)
+    print(yaml.dump(results, default_flow_style=False))
     print(f"[INFO] evaluation results saved at {filepath}")
 
 # --------------------
 # GCP
 # --------------------
 
-def gcp_configure(bucket):
+def gcp_configure():
   from plumbum.cmd import gcloud
 
   try:
-    # create bucket
-    print(f"[INFO] (1/3) creating bucket {bucket}")
-    gcloud['storage', '--project', GCP_PROJECT_ID, 'buckets', 'create', f'gs://{bucket}', '--public-access-prevention'] & FG
-  except Exception as e:
-    print(f"[ERROR] could not create bucket: {e}\n\n")
-
-  try:
-    print("[INFO] (2/3) configuring firewalls")
-    # configure firewalls
+    print("[INFO] configuring firewalls")
     # weaver-dsb-socialnetwork:
     # tcp ports: 9000,9001
     # weaver-dsb-storage:
@@ -305,160 +321,88 @@ def gcp_configure(bucket):
   except Exception as e:
     print(f"[ERROR] could not configure firewalls: {e}\n\n")
 
-  try:
-    print("[INFO] (3/3) creating artifact registry for docker images")
-  
-  except Exception as e:
-    print(f"[ERROR] could not create artifacts repository for docker images: {e}\n\n")
-
-def gcp_build():
-  from plumbum.cmd import rm, go, mkdir, cp, gsutil, rm
-
-  # upload files to gcp cloud storage
-  mkdir['-p', f'tmp/{APP_FOLDER_NAME}'] & FG
-  cp['-r', 'docker-compose.yml', 'docker', 'requirements.txt', f'tmp/{APP_FOLDER_NAME}'] & FG
-  gsutil['cp', '-r', f'tmp/{APP_FOLDER_NAME}', f'gs://{GCP_BUCKET}/'] & FG
-  rm['-r', 'tmp'] & FG
-
 def gcp_deploy():
-  from plumbum.cmd import terraform
-  from plumbum.cmd import gcloud
+  from plumbum.cmd import terraform, cp, ansible_playbook
 
-  terraform['-chdir=./terraform', 'init'] & FG
-  terraform['-chdir=./terraform', 'apply'] & FG
+  terraform['-chdir=./deploy/terraform', 'init'] & FG
+  terraform['-chdir=./deploy/terraform', 'apply'] & FG
 
-  waiting_time = 300
-  while waiting_time > 10:
-    print(f"[INFO] waiting {waiting_time} seconds to install all dependencies in GCP instances...")
-    for _ in tqdm(range(waiting_time)):
-      sleep(1)
-    # check if dependencies file was created, otherwise we go for a second round of waiting
-    try:
-      cmd = f'if [ -f "/deps.ready" ]; then echo "{GCP_INSTANCE_DB_MANAGER}: dependencies OK!"; else exit 1; fi'
-      gcloud['compute', 'ssh', GCP_INSTANCE_DB_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', cmd] & FG
-      #cmd = f'if [ -f "/deps.ready" ]; then echo "{GCP_INSTANCE_APP_MANAGER}: dependencies OK!"; else exit 1; fi'
-      #gcloud['compute', 'ssh', GCP_INSTANCE_APP_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', cmd] & FG
-      break
-    except Exception as e:
-      waiting_time = int(waiting_time - 50)
-      pass
+  display_progress_bar(30, "waiting for all machines to initialize")
 
+  cp["deploy/ansible/ansible.cfg", os.path.expanduser("~/.ansible.cfg")] & FG
+  print("[INFO] copied deploy/ansible/ansible.cfg to ~.ansible.cfg")
 
-  # move folder from root dir to user dir
-  def move_app_folder():
-    return f'sudo mv /{APP_FOLDER_NAME} /home/{GCP_USERNAME}/{APP_FOLDER_NAME} 2>/dev/null; true'
-  gcloud['compute', 'ssh', GCP_INSTANCE_DB_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', move_app_folder()] & FG
-  gcloud['compute', 'ssh', GCP_INSTANCE_DB_EU, '--zone', GCP_ZONE_EU, '--command', move_app_folder()] & FG
-  gcloud['compute', 'ssh', GCP_INSTANCE_DB_US, '--zone', GCP_ZONE_US, '--command', move_app_folder()] & FG
-  
-  def validate_app_folder(instance_identifier):
-    return f'if [ -d "/home/{GCP_USERNAME}/{APP_FOLDER_NAME}" ]; then echo "{instance_identifier}: app folder OK!"; else exit 1; fi'
-  try:
-    gcloud['compute', 'ssh', GCP_INSTANCE_DB_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', validate_app_folder('manager')] & FG
-    gcloud['compute', 'ssh', GCP_INSTANCE_DB_EU, '--zone', GCP_ZONE_EU, '--command', validate_app_folder('storage @ eu')] & FG
-    gcloud['compute', 'ssh', GCP_INSTANCE_DB_US, '--zone', GCP_ZONE_US, '--command', validate_app_folder('storage @ us')] & FG
-  except Exception as e:
-    print(f"[ERROR] app folder missing in gcp instance:\n\n{e}")
-    exit(-1)
-
-  def validate_docker_images(instance_identifier):
-    return f'if [ $(sudo docker images | tail -n +2 | wc -l) -eq 6 ]; then echo "{instance_identifier}: docker images OK!"; else exit 1; fi'
-  try:
-    gcloud['compute', 'ssh', GCP_INSTANCE_DB_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', validate_docker_images('manager')] & FG
-    gcloud['compute', 'ssh', GCP_INSTANCE_DB_EU, '--zone', GCP_ZONE_EU, '--command', validate_docker_images('storage @ eu')] & FG
-    gcloud['compute', 'ssh', GCP_INSTANCE_DB_US, '--zone', GCP_ZONE_US, '--command', validate_docker_images('storage @ us')] & FG
-  except Exception as e:
-    print(f"[ERROR] docker images missing:\n\n{e}")
-    exit(-1)
- 
-  public_ip_db_eu = get_instance_host(GCP_INSTANCE_DB_EU, GCP_ZONE_EU)
-  public_ip_db_us = get_instance_host(GCP_INSTANCE_DB_US, GCP_ZONE_US)
-
-  gen_weaver_config_gcp(public_ip_db_eu, public_ip_db_us)
-
-  # copy app binary and weaver config for app instances @ eu & us
-  gcloud['compute', 'scp', '--recurse', '--zone', GCP_ZONE_EU, 'pkg', 'main.go', 'go.mod', 'go.sum', 'weaver-gcp-eu.toml', f'{GCP_USERNAME}@{GCP_INSTANCE_APP_EU}:'] & FG
-  gcloud['compute', 'scp', '--recurse', '--zone', GCP_ZONE_US, 'pkg', 'main.go', 'go.mod', 'go.sum', 'weaver-gcp-us.toml', f'{GCP_USERNAME}@{GCP_INSTANCE_APP_US}:'] & FG
-
-  # copy manager.py script and python requirements for app manager, and install requirements
-  #gcloud['compute', 'scp', '--zone', GCP_ZONE_MANAGER, 'manager.py', 'requirements.txt', f'{GCP_USERNAME}@{GCP_INSTANCE_APP_EU}:'] & FG
-  #cmd = 'pip install -r requirements.txt'
-  #gcloud['compute', 'ssh', GCP_INSTANCE_APP_MANAGER, '--zone', GCP_ZONE_MANAGER, '--command', cmd] & FG
-
+  # generate temporary files for this deployment
+  os.makedirs("deploy/tmp", exist_ok=True)
+  print(f"[INFO] created {BASE_DIR}/deploy/tmp/ directory")
+  # generate weaver config with hosts of datastores in gcp machines
+  gen_weaver_config_gcp()
+  # generate ansible inventory with hosts of all gcp machines
   gen_ansible_inventory_gcp()
-    
+  # generate ansible inventory with extra variables for current deployment
+  gen_ansible_vars()
+  
+  ansible_playbook["deploy/ansible/playbooks/install-machines.yml", "-i", "deploy/tmp/ansible-inventory-gcp.cfg", "--extra-vars", "@deploy/tmp/ansible-vars.yml"] & FG
 
 def gcp_info():
   from plumbum.cmd import gcloud
-  cmd = f'sudo docker node ls'
-  gcloud['compute', 'ssh', GCP_INSTANCE_DB_MANAGER, '--command', cmd] & FG
-  cmd = f'sudo docker service ls'
-  gcloud['compute', 'ssh', GCP_INSTANCE_DB_MANAGER, '--command', cmd] & FG
+  gcloud['compute', 'ssh', GCP_INSTANCE_DB_MANAGER, '--command', 'sudo docker node ls'] & FG
+  gcloud['compute', 'ssh', GCP_INSTANCE_DB_MANAGER, '--command', 'sudo docker service ls'] & FG
 
-  print()
-  print("--- DATASTORES ---")
-  public_ip_manager = get_instance_host(GCP_INSTANCE_DB_MANAGER, GCP_ZONE_MANAGER)
-  print("storage manager running @", public_ip_manager)
-  public_ip_eu = get_instance_host(GCP_INSTANCE_DB_EU, GCP_ZONE_EU)
-  print(f"storage in {GCP_ZONE_EU} running @", public_ip_eu)
-  public_ip_us = get_instance_host(GCP_INSTANCE_DB_US, GCP_ZONE_US)
-  print(f"storage in {GCP_ZONE_US} running @", public_ip_us)
-  print()
-
-  print("--- SERVICES ---")
-  #public_ip_manager = get_instance_host(GCP_INSTANCE_APP_MANAGER, GCP_ZONE_MANAGER)
-  #print("app manager running @", public_ip_manager)
-  public_ip_eu = get_instance_host(GCP_INSTANCE_APP_EU, GCP_ZONE_EU)
-  print(f"services in {GCP_ZONE_EU} running @", public_ip_eu)
-  public_ip_us = get_instance_host(GCP_INSTANCE_APP_US, GCP_ZONE_US)
-  print(f"services in {GCP_ZONE_US} running @", public_ip_us)
-  print()
-  print()
+  print("\n--- DATASTORES ---")
+  print("storage manager running @", get_instance_host(GCP_INSTANCE_DB_MANAGER, GCP_ZONE_MANAGER))
+  print(f"storage in {GCP_ZONE_EU} running @", get_instance_host(GCP_INSTANCE_DB_EU, GCP_ZONE_EU))
+  print(f"storage in {GCP_ZONE_US} running @", get_instance_host(GCP_INSTANCE_DB_US, GCP_ZONE_US))
+  print("\n--- SERVICES ---")
+  print(f"wrk2 in {GCP_ZONE_MANAGER} running @", get_instance_host(GCP_INSTANCE_APP_WRK2, GCP_ZONE_MANAGER))
+  print(f"services in {GCP_ZONE_EU} running @", get_instance_host(GCP_INSTANCE_APP_EU, GCP_ZONE_EU))
+  print(f"services in {GCP_ZONE_US} running @\n\n", get_instance_host(GCP_INSTANCE_APP_US, GCP_ZONE_US))
   
-def gcp_run():
+def gcp_start():
   from plumbum.cmd import ansible_playbook
-  gen_ansible_inventory_gcp()
-
-  ansible_playbook["ansible/start-datastores.yml", "-i", "ansible/inventory-gcp.cfg"] & FG
-  print("[INFO] waiting 60 seconds for datastores to initialize...")
-  for _ in tqdm(range(60)):
-      sleep(1)
-
-  ansible_playbook["ansible/start-app.yml", "-i", "ansible/inventory-gcp.cfg"] & FG
+  ansible_playbook["deploy/ansible/playbooks/start-datastores.yml", "-i", "deploy/tmp/ansible-inventory-gcp.cfg", "--extra-vars", "@deploy/tmp/ansible-vars.yml"] & FG
+  display_progress_bar(30, "waiting for datastores to initialize")
+  ansible_playbook["deploy/ansible/playbooks/start-app.yml", "-i", "deploy/tmp/ansible-inventory-gcp.cfg", "--extra-vars", "@deploy/tmp/ansible-vars.yml"] & FG
 
 def gcp_stop():
   from plumbum.cmd import ansible_playbook
-  ansible_playbook["ansible/stop-datastores.yml", "-i", "ansible/inventory-gcp.cfg"] & FG
-  ansible_playbook["ansible/stop-app.yml", "-i", "ansible/inventory-gcp.cfg"] & FG
+  ansible_playbook["deploy/ansible/playbooks/stop-datastores.yml", "-i", "deploy/tmp/ansible-inventory-gcp.cfg", "--extra-vars", "@deploy/tmp/ansible-vars.yml"] & FG
+  ansible_playbook["deploy/ansible/playbooks/stop-app.yml", "-i", "deploy/tmp/ansible-inventory-gcp.cfg", "--extra-vars", "@deploy/tmp/ansible-vars.yml"] & FG
 
 def gcp_restart():
   gcp_stop()
-  gcp_run()
-
+  gcp_start()
   
 def gcp_clean():
   from plumbum.cmd import terraform
-  terraform['-chdir=./terraform', 'destroy'] & FG
+  import shutil
 
+  terraform['-chdir=./deploy/terraform', 'destroy'] & FG
+  if os.path.exists("deploy/tmp"):
+    shutil.rmtree("deploy/tmp")
+    print(f"[INFO] removed {BASE_DIR}/deploy/tmp/ directory")
+ 
 def gcp_init_social_graph():
-  pass
+  print("[INFO] nothing to be done for gcp")
+  exit(0)
 
-def gcp_metrics():
-  metrics('multi', None)
+def gcp_metrics(timestamp):
+  metrics('gcp', timestamp)
 
 def gcp_wrk2(threads, conns, duration, rate):
+  from plumbum.cmd import ansible_playbook
   host_eu = get_instance_host(GCP_INSTANCE_APP_EU, GCP_ZONE_EU)
   timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
   run_workload(timestamp, 'gcp', f"http://{host_eu}:{APP_PORT}", threads, conns, duration, rate)
-  #FIXME
-  #metrics('gcp', timestamp)
-
+  gen_ansible_vars(timestamp, 'gcp')
+  ansible_playbook["deploy/ansible/playbooks/gather-metrics.yml", "-i", "deploy/tmp/ansible-inventory-gcp.cfg", "--extra-vars", "@deploy/tmp/ansible-vars.yml"] & FG
+  print(f"[INFO] metrics results saved at evaluation/gcp/{timestamp}/ in metrics-eu.yaml and metrics-us.yaml files")
 
 # --------------------
 # LOCAL
 # --------------------
 
-def local_init_social_graph(address):
+def local_init_social_graph():
   from plumbum import local
   with local.env(HOST_EU=f"http://127.0.0.1:{APP_PORT}", HOST_US=f"http://127.0.0.1:{APP_PORT}"):
     local['./scripts/init_social_graph.py'] & FG
@@ -466,10 +410,10 @@ def local_init_social_graph(address):
 def local_wrk2(threads, conns, duration, rate):
   timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
   run_workload(timestamp, 'local', f"http://127.0.0.1:{APP_PORT}", threads, conns, duration, rate)
-  metrics('multi', timestamp, True)
+  metrics('local', timestamp)
 
-def local_metrics():
-  metrics('multi', None, True)
+def local_metrics(timestamp):
+  metrics('local', timestamp)
 
 def local_storage_deploy():
   print("[INFO] nothing to be done for local")
@@ -484,9 +428,7 @@ def local_storage_build():
 def local_storage_run():
   from plumbum.cmd import docker_compose
   docker_compose['up', '-d'] & FG
-  print("[INFO] waiting 30 seconds for storages to be ready...")
-  for _ in tqdm(range(30)):
-      sleep(1)
+  display_progress_bar(30, "waiting for storages to be ready")
 
 def local_storage_info():
   print("[INFO] nothing to be done for local")
@@ -502,7 +444,7 @@ if __name__ == "__main__":
 
   commands = [
     # gcp
-    'configure', 'build', 'deploy', 'run', 'stop', 'info', 'restart', 'clean', 'info',
+    'configure', 'deploy', 'start', 'stop', 'info', 'restart', 'clean', 'info',
     # datastores
     'storage-build', 'storage-deploy', 'storage-run', 'storage-info', 'storage-clean',
     # eval
@@ -517,8 +459,8 @@ if __name__ == "__main__":
       parser.add_argument('-c', '--conns', default=2, help="Number of connections")
       parser.add_argument('-d', '--duration', default=30, help="Duration")
       parser.add_argument('-r', '--rate', default=50, help="Number of requests per second")
-    if cmd == 'configure':
-      parser.add_argument('-b', '--bucket', help="Name of the bucket")
+    if cmd == 'metrics':
+      parser.add_argument('-t', '--timestamp', help="Timestamp of workload")
       
   args = vars(main_parser.parse_args())
   command = args.pop('command').replace('-', '_')

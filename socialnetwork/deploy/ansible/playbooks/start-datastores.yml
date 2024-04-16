@@ -2,7 +2,6 @@
 - hosts: swarm_manager
   gather_facts: no
   any_errors_fatal: true
-  vars_files: vars.yml
   tasks:
     - name: Check if swarm is already initialized
       shell: sudo docker node ls
@@ -29,7 +28,6 @@
 - hosts: swarm_workers
   gather_facts: no
   any_errors_fatal: true
-  vars_files: vars.yml
   tasks:
     - name: Add workers to swarm
       shell: >
@@ -41,13 +39,12 @@
 - hosts: swarm_manager
   gather_facts: no
   any_errors_fatal: true
-  vars_files: vars.yml
   tasks:
     - name: Deploy stack
       shell: sudo docker stack deploy --with-registry-auth --compose-file ~/{{ app_folder_name }}/docker-compose.yml socialnetwork
   
-    - name: Check that all workers join the swarm and are ready
-      # command format:
+    - name: Check that all workers joined the swarm and are ready
+      # raw command:
       # sudo docker node ls --format '{{.Hostname}}: {{.Status}}' | grep 'Ready' | wc -l
       shell: >
         sudo docker node ls --format {% raw %}'{{.Hostname}}{% endraw %}: {% raw %}{{.Status}}'{% endraw %} | grep 'Ready' | wc -l
@@ -57,12 +54,12 @@
       until: (num_nodes.stdout | int) == num_swarm_nodes
 
     - name: Check that all swarm services are replicated
-      # command format:
-      # sudo docker stack services <swarm_stack> --format '{{.Name}}: {{.Replicas}}' | grep '1/1' | wc -l
+      # raw command:
+      # sudo docker stack services socialnetwork --format '{{.Name}}: {{.Replicas}}' | grep '1/1' | wc -l
       shell: >
         sudo docker stack services socialnetwork --format {% raw %}'{{.Name}}: {{.Replicas}}'{% endraw %} | grep '1/1' | wc -l
       register: num_services
-      retries: 5
+      retries: 10
       delay: 10
       until: (num_services.stdout | int) == num_swarm_services
 

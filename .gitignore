@@ -1,11 +1,13 @@
+# gcp config
 socialnetwork/gcp/credentials.json
 socialnetwork/gcp/token.txt
-socialnetwork/socialnetwork
-socialnetwork/terraform/.terraform
-socialnetwork/terraform/.terraform.lock.hcl
-socialnetwork/terraform/terraform.tfstate
-socialnetwork/terraform/terraform.tfstate.backup
-**/weaver_gen.go
+# terraform
+socialnetwork/deploy/terraform/.terraform
+socialnetwork/deploy/terraform/.terraform.lock.hcl
+socialnetwork/deploy/terraform/terraform.tfstate
+socialnetwork/deploy/terraform/terraform.tfstate.backup
+socialnetwork/deploy/terraform/.terraform.tfstate.lock.info
+# socialnetwork workload
 socialnetwork/wrk2/obj/*
 socialnetwork/wrk2/wrk
 socialnetwork/wrk2/deps/luajit/src/*.o
@@ -14,20 +16,13 @@ socialnetwork/wrk2/deps/luajit/src/host/buildvm
 socialnetwork/wrk2/deps/luajit/src/host/minilua
 socialnetwork/wrk2/deps/luajit/src/libluajit.a
 socialnetwork/wrk2/deps/luajit/src/luajit
-socialnetwork/terraform/.terraform.tfstate.lock.info
-socialnetwork/weaver-gcp.toml
-socialnetwork/.TODO
-socialnetwork/data/*
-socialnetwork/metrics.txt
-socialnetwork/evaluation/gke/*.txt
-socialnetwork/evaluation/gke/*.metrics
-socialnetwork/evaluation/gke/*.workload
-socialnetwork/evaluation/gcp/*.txt
-socialnetwork/evaluation/gcp/*.metrics
-socialnetwork/evaluation/gcp/*.workload
-socialnetwork/evaluation/local/*.txt
-socialnetwork/evaluation/local/*.metrics
-socialnetwork/evaluation/local/*.workload
-socialnetwork/weaver-gcp-eu.toml
-socialnetwork/weaver-gcp-us.toml
-socialnetwork/ansible/inventory-gcp.cfg
+# service weaver gen files and binaries
+**/weaver_gen.go
+socialnetwork/socialnetwork
+# evaluation files
+socialnetwork/evaluation/gcp/*
+!socialnetwork/evaluation/gcp/.gitkeep
+socialnetwork/evaluation/local/*
+!socialnetwork/evaluation/local/.gitkeep
+# temporary deployment files
+socialnetwork/deploy/tmp/*

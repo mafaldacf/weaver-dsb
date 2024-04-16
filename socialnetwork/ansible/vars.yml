@@ -1,5 +1,0 @@
-app_folder_name: socialnetwork
-stack: socialnetwork
-swarm_advertise_port: 2377
-num_swarm_nodes: 3
-num_swarm_services: 20

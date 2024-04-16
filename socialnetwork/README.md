@@ -18,6 +18,7 @@ source ~/.bashrc
 go install github.com/ServiceWeaver/weaver/cmd/weaver@v0.22.0
 ```
 - [Terraform >= v1.6.6](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli)
+- [Ansible >= v2.15.2](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html)
 - [GCloud Cli](https://cloud.google.com/sdk/docs/install)
 
 
@@ -52,23 +53,16 @@ gcloud config set project YOUR_PROJECT_ID
 gcloud config get-value project
 ```
 1. Ensure that [Compute Engine API](https://console.cloud.google.com/marketplace/product/google/compute.googleapis.com) and [Kubernetes Engine API](https://console.cloud.google.com/marketplace/product/google/container.googleapis.com), [Cloud Storage API](https://console.cloud.google.com/marketplace/product/google/storage.googleapis.com), and [Artifact Registry API](https://console.cloud.google.com/marketplace/product/google/artifactregistry.googleapis.com) are enabled in GCP
-2. Go to `weaver-dsb/socialnetwork/gcp/config.yml` and place
-   1. your GCP `project_id`
-   2. any desired `username` to access GCP instances
-   3. any desired `bucket_name` (e.g. `weaver-dsb` with some suffix to ensure it's unique) for creating a new bucket
-3. Create a new Cloud Storage bucket and create new Firewall Rules by passing your bucket name
+2. Go to `weaver-dsb/socialnetwork/gcp/config.yml` and place you GCP `project_id` and any desired `username` for accessing GCP machines
+3. Create new Firewall Rules
 ``` zsh
-./manager.py configure --gcp --bucket YOUR_BUCKET_NAME
+./manager.py configure --gcp
 ```
-5. Setup a new Service Account key for authenticating (for more information: https://developers.google.com/workspace/guides/create-credentials)
+1. Setup a new Service Account key for authenticating (for more information: https://developers.google.com/workspace/guides/create-credentials)
     - Go to [IAM & Admin -> Service Accounts](https://console.cloud.google.com/iam-admin/serviceaccounts) of your project
     - Select your compute engine default service account
     - Go to the keys tab and select `ADD KEY` to create a new key in JSON
     - Place your JSON file as `credentials.json` in `weaver-dsb/socialnetwork/gcp/credentials.json`
-
-### Terraform Configuration
-
-In the terraform folder, go to `scripts/deps-storage` and edit the `GCP_BUCKET_NAME` environment variable
 
 ### Workload Configuration
 
@@ -94,7 +88,6 @@ Build docker images and deploy datastores (mongodb, redis, rabbitmq):
 Deploy and run application:
 
 ``` zsh
-go generate
 go build
 weaver multi deploy weaver-local.toml
 ```
@@ -138,41 +131,19 @@ Stop datastores:
 
 #### Deploying in GCP machines for app + datastores
 
-Build, deploy, and run your application (datastores + services)
+Deploy, and start your application (datastores + services). You can also display some info for docker swarm and hosts of gcp machines
 ``` zsh
-./manager.py build --gcp
 ./manager.py deploy --gcp
-./manager.py run --gcp
-```
-
-If you want to display some info
-``` zsh
+./manager.py start --gcp
 ./manager.py info --gcp
 ```
 
-Run workload (2 threads, 2 clients, 30 duration, 50 rate) and automatically gather metrics to `evaluation` directory:
-[**NOTE**] Metrics command is currently not working for GCP - TODO: obtain info from gcp instances
-
+Run workload and automatically gather metrics to `evaluation` directory:
 ``` zsh
 # default params: 2 threads, 2 clients, 30 duration (in seconds), 50 rate
 ./manager.py wrk2 --local
-```
-
-If you want, you can specify other parameters:
-``` zsh
+# you can also specify other parameters
 ./manager.py wrk2 --local -t THREADS -c CLIENTS -d DURATION -r RATE
-# values used antipode evaluation:
-# threads, clients, rate
-#   2        4        50
-#   2        4        100
-#   2        4        125
-#   2        4        150
-#   2        4        160
-```
-
-If you want to just observe metrics:
-``` zsh
-./manager.py metrics --gcp
 ```
 
 Restart datastores and application:
@@ -180,7 +151,7 @@ Restart datastores and application:
 ./manager.py restart --gcp
 ```
 
-Otherwise, to datastores storages and application at the end, do:
+Otherwise, to clean all gcp resources at the end, do:
 
 ``` zsh
 ./manager.py clean --gcp

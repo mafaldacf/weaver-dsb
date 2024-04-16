@@ -1,0 +1,111 @@
+---
+- hosts: 
+    app_wrk2
+    app_services
+    swarm_manager
+    swarm_workers
+  gather_facts: no
+  any_errors_fatal: true
+  tasks:
+    - name: Check if all machines are ready with deps.ready file
+      stat:
+      # this file is generated after the startup script of Terraform runs successfuly
+        path: /deps.ready
+      register: file_status
+      retries: 15
+      delay: 30
+      until: file_status.stat.exists
+
+    - name: Create app directory
+      file:
+        path: "/home/{{ hostvars[inventory_hostname]['user'] }}/{{ app_folder_name }}"
+        state: directory
+
+# ----------
+# DATASTORES
+# ----------
+- hosts: 
+    swarm_manager
+    swarm_workers
+  gather_facts: no
+  any_errors_fatal: true
+  tasks:
+    - name: Copy docker files to datastore worker nodes
+      synchronize:
+        src: "{{ item }}"
+        dest: "/home/{{ hostvars[inventory_hostname]['user'] }}/{{ app_folder_name }}/"
+      with_items:
+        - "{{ base_dir }}/docker"
+        - "{{ base_dir }}/docker-compose.yml"
+
+    - name: Build docker images in datastore worker nodes
+      docker_image:
+        name: "{{ item.name }}"
+        build:
+          path: "{{ item.path }}"
+        source: build
+      with_items:
+        - { name: "mongodb-delayed:4.4.6", path: "{{ app_folder_name }}/docker/mongodb-delayed" }
+        - { name: "mongodb-setup:4.4.6",   path: "{{ app_folder_name }}/docker/mongodb-setup/post-storage" }
+        - { name: "rabbitmq-setup:3.8",    path: "{{ app_folder_name }}/docker/rabbitmq-setup/write-home-timeline" }
+      # enable to use privilege escalation
+      # docker requires running with sudo
+      become: true
+
+    # sanity check
+    - name: Verify docker images
+      docker_image_info:
+        name: "{{ item }}"
+      with_items:
+        mongodb-delayed:4.4.6
+        mongodb-setup:4.4.6
+        rabbitmq-setup:3.8
+      # enable to use privilege escalation
+      # docker requires running with sudo
+      become: true
+
+# -----------
+# APPLICATION
+# -----------
+- hosts: 
+    app_wrk2
+    app_services
+  gather_facts: no
+  any_errors_fatal: true
+  tasks:
+    - name: Copy manager.py script to app wrk2 node
+      synchronize:
+        src: "{{ item }}"
+        dest: /home/{{ hostvars[inventory_hostname]['user'] }}/{{ app_folder_name }}/
+      with_items:
+        - "{{ base_dir }}/manager.py"
+        - "{{ base_dir }}/requirements.txt"
+
+    - name: Install python requirements
+      shell: pip3 install -r requirements.txt
+      args:
+        chdir: "{{ app_folder_name }}"
+
+- hosts: 
+    app_services
+  gather_facts: no
+  any_errors_fatal: true
+  tasks:
+    - name: Copy files for deploying application to app service nodes
+      synchronize:
+        src: "{{ item }}"
+        dest: /home/{{ hostvars[inventory_hostname]['user'] }}/{{ app_folder_name }}/
+      with_items:
+        - "{{ base_dir }}/pkg"
+        - "{{ base_dir }}/socialnetwork.go"
+        - "{{ base_dir }}/go.mod"
+        - "{{ base_dir }}/go.sum"
+        - "{{ base_dir }}/deploy/tmp/weaver-gcp-{{ hostvars[inventory_hostname]['region'] }}.toml"
+    
+    # FIXME: this should not be necessary
+    # for some reason, the Weaver dependency is not being installed in the Terraform startup script
+    - name: Install Service Weaver dependency for Go in app service nodes
+      shell: go install github.com/ServiceWeaver/weaver/cmd/weaver@v0.22.0
+      environment: # for Go and Weaver
+        PATH: $PATH:/usr/local/go/bin:/home/{{ hostvars[inventory_hostname]['user'] }}/go/bin:/home/{{ hostvars[inventory_hostname]['user'] }}/.go/bin
+

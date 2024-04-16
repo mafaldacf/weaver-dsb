@@ -3,66 +3,66 @@
 # --------
 
 ["socialnetwork/pkg/services/ComposePostService"]
-redis_address       = "localhost"
-rabbitmq_address    = "localhost"
+redis_address       = "127.0.0.1"
+rabbitmq_address    = "127.0.0.1"
 redis_port          = 6385
 rabbitmq_port       = 5673
 region              = "us-central1"
 regions             = ["us-central1", "europe-west3"]
 
 ["socialnetwork/pkg/services/HomeTimelineService"]
-redis_address       = "localhost"
+redis_address       = "127.0.0.1"
 redis_port          = 6386
 region              = "us-central1"
 
 ["socialnetwork/pkg/services/PostStorageService"]
-mongodb_address     = "localhost"
-memcached_address   = "localhost"
+mongodb_address     = "127.0.0.1"
+memcached_address   = "127.0.0.1"
 mongodb_port        = 27018
 memcached_port      = 11215
 region              = "us-central1"
 
 ["socialnetwork/pkg/services/SocialGraphService"]
-mongodb_address     = "localhost"
-redis_address       = "localhost"
+mongodb_address     = "127.0.0.1"
+redis_address       = "127.0.0.1"
 redis_port          = 6388
 mongodb_port        = 27018
 region              = "us-central1"
 
 ["socialnetwork/pkg/services/UrlShortenService"]
-mongodb_address     = "localhost"
-memcached_address   = "localhost"
+mongodb_address     = "127.0.0.1"
+memcached_address   = "127.0.0.1"
 mongodb_port        = 27018
 memcached_port      = 11216
 region              = "us-central1"
 
 ["socialnetwork/pkg/services/UserService"]
-mongodb_address     = "localhost"
-memcached_address   = "localhost"
+mongodb_address     = "127.0.0.1"
+memcached_address   = "127.0.0.1"
 mongodb_port        = 27018
 memcached_port      = 11217
 region              = "us-central1"
 
 ["socialnetwork/pkg/services/UserMentionService"]
 # uses UserService cache (memcached)
-mongodb_address     = "localhost"
-memcached_address   = "localhost"
+mongodb_address     = "127.0.0.1"
+memcached_address   = "127.0.0.1"
 mongodb_port        = 27018
 memcached_port      = 11217
 region              = "us-central1"
 
 ["socialnetwork/pkg/services/UserTimelineService"]
-mongodb_address     = "localhost"
-redis_address       = "localhost"
+mongodb_address     = "127.0.0.1"
+redis_address       = "127.0.0.1"
 mongodb_port        = 27018
 redis_port          = 6387
 region              = "us-central1"
 
 ["socialnetwork/pkg/services/WriteHomeTimelineService"]
 # uses HomeTimelineService cache (redis)
-rabbitmq_address    = "localhost"
-mongodb_address     = "localhost"
-redis_address       = "localhost"
+rabbitmq_address    = "127.0.0.1"
+mongodb_address     = "127.0.0.1"
+redis_address       = "127.0.0.1"
 mongodb_port        = 27018
 redis_port          = 6386
 rabbitmq_port       = 5673

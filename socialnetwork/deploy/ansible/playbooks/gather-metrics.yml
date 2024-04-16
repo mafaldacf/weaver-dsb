@@ -1,0 +1,19 @@
+---
+- hosts:
+    app_services
+  gather_facts: no
+  any_errors_fatal: true
+  tasks:
+    - name: Gather metrics in remote machines
+      shell: /usr/bin/python3 manager.py metrics --local -t {{ workload_timestamp }}
+      args:
+        chdir: "{{ app_folder_name }}"
+      environment: # for Go and Weaver
+        PATH: $PATH:/usr/local/go/bin:/home/{{ hostvars[inventory_hostname]['user'] }}/go/bin:/home/{{ hostvars[inventory_hostname]['user'] }}/.go/bin
+
+
+    - name: Copy metrics to host machine
+      synchronize:
+        src: "/home/{{ hostvars[inventory_hostname]['user'] }}/{{ app_folder_name }}/evaluation/local/{{ workload_timestamp }}/metrics.yml"
+        dest: "{{ base_dir }}/evaluation/{{ deployment_type }}/{{ workload_timestamp }}/metrics-{{ hostvars[inventory_hostname]['region'] }}.yml"
+        mode: pull

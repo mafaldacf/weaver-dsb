@@ -11,7 +11,7 @@ module "gcp_create_storage_instance_manager" {
   hostname      = "weaver-dsb-db-manager.prod"
   zone          = "europe-west3-a"
   image         = "debian-cloud/debian-11"
-  script        = "scripts/deps-storage.sh"
+  script        = "../scripts/deps-datastore.sh"
   providers = {
     google = google
   }
@@ -23,7 +23,7 @@ module "gcp_create_storage_instance_eu" {
   hostname      = "weaver-dsb-db-eu.prod"
   zone          = "europe-west3-a"
   image         = "debian-cloud/debian-11"
-  script        = "scripts/deps-storage.sh"
+  script        = "../scripts/deps-datastore.sh"
   providers = {
     google = google
   }
@@ -35,23 +35,11 @@ module "gcp_create_storage_instance-us" {
   hostname      = "weaver-dsb-db-us.prod"
   zone          = "us-central1-a"
   image         = "debian-cloud/debian-11"
-  script        = "scripts/deps-storage.sh"
+  script        = "../scripts/deps-datastore.sh"
   providers = {
     google = google
   }
 }
-
-/* module "gcp_create_app_instance-manager" {
-  source        = "./modules/gcp_create_instance"
-  instance_name = "weaver-dsb-app-manager"
-  hostname      = "weaver-dsb-app-manager.prod"
-  zone          = "europe-west3-a"
-  image         = "debian-cloud/debian-11"
-  script        = "scripts/deps-app.sh"
-  providers = {
-    google = google
-  }
-} */
 
 module "gcp_create_app_instance-eu" {
   source        = "./modules/gcp_create_instance"
@@ -59,7 +47,7 @@ module "gcp_create_app_instance-eu" {
   hostname      = "weaver-dsb-app-eu.prod"
   zone          = "europe-west3-a"
   image         = "debian-cloud/debian-11"
-  script        = "scripts/deps-app.sh"
+  script        = "../scripts/deps-app.sh"
   providers = {
     google = google
   }
@@ -71,7 +59,19 @@ module "gcp_create_app_instance-us" {
   hostname      = "weaver-dsb-app-us.prod"
   zone          = "us-central1-a"
   image         = "debian-cloud/debian-11"
-  script        = "scripts/deps-app.sh"
+  script        = "../scripts/deps-app.sh"
+  providers = {
+    google = google
+  }
+}
+
+module "gcp_create_app_instance-wrk2" {
+  source        = "./modules/gcp_create_instance"
+  instance_name = "weaver-dsb-app-wrk2"
+  hostname      = "weaver-dsb-app-wrk2.prod"
+  zone          = "europe-west3-a"
+  image         = "debian-cloud/debian-11"
+  script        = "../scripts/deps-app.sh"
   providers = {
     google = google
   }

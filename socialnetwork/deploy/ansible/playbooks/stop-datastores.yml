@@ -2,7 +2,6 @@
 - hosts: swarm_workers
   gather_facts: no
   any_errors_fatal: true
-  vars_files: vars.yml
   tasks:
     - name: Remove workers from swarm
       shell: sudo docker swarm leave -f
@@ -15,7 +14,6 @@
 - hosts: swarm_manager
   gather_facts: no
   any_errors_fatal: true
-  vars_files: vars.yml
   tasks:
     - name: Remove manager from swarm
       shell: sudo docker swarm leave -f

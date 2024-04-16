@@ -2,7 +2,6 @@
 - hosts: app_services
   gather_facts: no
   any_errors_fatal: true
-  vars_files: vars.yml
   tasks:
     - name: Stop socialnetwork app
       shell: /usr/bin/tmux kill-session -t socialnetwork
