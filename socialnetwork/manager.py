@@ -325,16 +325,16 @@ def gcp_deploy():
   from plumbum.cmd import terraform, cp, ansible_playbook
 
   terraform['-chdir=./deploy/terraform', 'init'] & FG
-  terraform['-chdir=./deploy/terraform', 'apply'] & FG
+  terraform['-chdir=./deploy/terraform', 'apply', '-auto-approve'] & FG
 
-  display_progress_bar(30, "waiting for all machines to initialize")
+  display_progress_bar(30, "waiting for all machines to be ready")
 
   cp["deploy/ansible/ansible.cfg", os.path.expanduser("~/.ansible.cfg")] & FG
   print("[INFO] copied deploy/ansible/ansible.cfg to ~.ansible.cfg")
 
   # generate temporary files for this deployment
   os.makedirs("deploy/tmp", exist_ok=True)
-  print(f"[INFO] created {BASE_DIR}/deploy/tmp/ directory")
+  print(f"[INFO] created deploy/tmp/ directory")
   # generate weaver config with hosts of datastores in gcp machines
   gen_weaver_config_gcp()
   # generate ansible inventory with hosts of all gcp machines
@@ -377,7 +377,7 @@ def gcp_clean():
   from plumbum.cmd import terraform
   import shutil
 
-  terraform['-chdir=./deploy/terraform', 'destroy'] & FG
+  terraform['-chdir=./deploy/terraform', 'destroy', '-auto-approve'] & FG
   if os.path.exists("deploy/tmp"):
     shutil.rmtree("deploy/tmp")
     print(f"[INFO] removed {BASE_DIR}/deploy/tmp/ directory")

@@ -4,6 +4,9 @@ Implementation of [DeathStarBench](https://github.com/delimitrou/DeathStarBench)
 
 ## Requirements
 
+- [Terraform >= v1.6.6](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli)
+- [Ansible >= v2.15.2](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html)
+- [GCloud Cli](https://cloud.google.com/sdk/docs/install)
 - [Golang >= 1.21.5](https://go.dev/doc/install)
 ```zsh
 # install Golang v1.21.5
@@ -17,9 +20,6 @@ source ~/.bashrc
 # install Weaver 0.22.0
 go install github.com/ServiceWeaver/weaver/cmd/weaver@v0.22.0
 ```
-- [Terraform >= v1.6.6](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli)
-- [Ansible >= v2.15.2](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html)
-- [GCloud Cli](https://cloud.google.com/sdk/docs/install)
 
 
 Install python packages to use the `manager` script:
@@ -52,9 +52,9 @@ gcloud config set project YOUR_PROJECT_ID
 # verify it is now set as default
 gcloud config get-value project
 ```
-1. Ensure that [Compute Engine API](https://console.cloud.google.com/marketplace/product/google/compute.googleapis.com) and [Kubernetes Engine API](https://console.cloud.google.com/marketplace/product/google/container.googleapis.com), [Cloud Storage API](https://console.cloud.google.com/marketplace/product/google/storage.googleapis.com), and [Artifact Registry API](https://console.cloud.google.com/marketplace/product/google/artifactregistry.googleapis.com) are enabled in GCP
-2. Go to `weaver-dsb/socialnetwork/gcp/config.yml` and place you GCP `project_id` and any desired `username` for accessing GCP machines
-3. Create new Firewall Rules
+1. Ensure that [Compute Engine API](https://console.cloud.google.com/marketplace/product/google/compute.googleapis.com) is enabled in GCP
+2. Go to `weaver-dsb/socialnetwork/gcp/config.yml` and place you GCP `project_id` and any desired `username` for accessing GCP machines using that hostname
+3. Create new firewall rules
 ``` zsh
 ./manager.py configure --gcp
 ```

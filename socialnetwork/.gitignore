@@ -1,0 +1,28 @@
+# gcp config
+gcp/credentials.json
+gcp/token.txt
+# terraform
+deploy/terraform/.terraform
+deploy/terraform/.terraform.lock.hcl
+deploy/terraform/terraform.tfstate
+deploy/terraform/terraform.tfstate.backup
+deploy/terraform/.terraform.tfstate.lock.info
+# socialnetwork workload
+wrk2/obj/*
+wrk2/wrk
+wrk2/deps/luajit/src/*.o
+wrk2/deps/luajit/src/host/*.o
+wrk2/deps/luajit/src/host/buildvm
+wrk2/deps/luajit/src/host/minilua
+wrk2/deps/luajit/src/libluajit.a
+wrk2/deps/luajit/src/luajit
+# service weaver gen files and binaries
+**/weaver_gen.go
+socialnetwork
+# evaluation files
+evaluation/gcp/*
+!evaluation/gcp/.gitkeep
+evaluation/local/*
+!evaluation/local/.gitkeep
+# temporary deployment files
+deploy/tmp/*
