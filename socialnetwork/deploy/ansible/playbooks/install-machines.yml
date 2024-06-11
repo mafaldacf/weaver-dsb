@@ -36,6 +36,7 @@
       synchronize:
         src: "{{ item }}"
         dest: "/home/{{ hostvars[inventory_hostname]['user'] }}/{{ app_folder_name }}/"
+        use_ssh_args: yes
       with_items:
         - "{{ base_dir }}/docker"
         - "{{ base_dir }}/docker-compose.yml"
@@ -109,6 +110,7 @@
       synchronize:
         src: "{{ item }}"
         dest: /home/{{ hostvars[inventory_hostname]['user'] }}/{{ app_folder_name }}/
+        use_ssh_args: yes
       with_items:
         - "{{ base_dir }}/pkg"
         - "{{ base_dir }}/socialnetwork.go"

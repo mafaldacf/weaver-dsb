@@ -26,3 +26,9 @@ evaluation/local/*
 !evaluation/local/.gitkeep
 # temporary deployment files
 deploy/tmp/*
+# python environment
+# $ python3 -m venv .venv
+# $ source .venv/bin/activate
+.venv/
+# mac stuff
+.DS_Store

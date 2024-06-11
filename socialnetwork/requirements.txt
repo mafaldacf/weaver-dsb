@@ -5,6 +5,7 @@ pyyaml
 tqdm
 google-api-python-client
 plumbum
+jinja2
 # from social-graph folder
 aiohttp
 asyncio

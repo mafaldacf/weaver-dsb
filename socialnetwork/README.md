@@ -45,6 +45,8 @@ sudo luarocks install penlight
 
 1. Ensure that you have a GCP project created and setup as your default project in `gcloud cli`:
 ``` zsh
+# initialize gcloud (set default region e.g. as europe-west3-a)
+gcloud init
 # list all projects
 gcloud projects list
 # select the desired project id

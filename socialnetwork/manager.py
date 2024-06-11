@@ -144,7 +144,7 @@ def gen_weaver_config_gcp():
 def gen_ansible_vars(workload_timestamp=None, deployment_type=None):
   import yaml
 
-  with open('deploy/ansible/vars.yml', 'r') as file:
+  with open('deploy/ansible/templates/vars.yml', 'r') as file:
     data = yaml.safe_load(file)
 
   data['base_dir'] = BASE_DIR
@@ -155,46 +155,50 @@ def gen_ansible_vars(workload_timestamp=None, deployment_type=None):
     yaml.dump(data, file)
 
 def gen_ansible_inventory_gcp():
-  from jinja2 import Environment
+  from jinja2 import Environment, FileSystemLoader
   import textwrap
 
-  # datastores
-  host_db_manager = get_instance_host(GCP_INSTANCE_DB_MANAGER, GCP_ZONE_MANAGER)
-  host_db_eu      = get_instance_host(GCP_INSTANCE_DB_EU, GCP_ZONE_EU)
-  host_db_us      = get_instance_host(GCP_INSTANCE_DB_US, GCP_ZONE_US)
-  # app
-  host_app_wrk2   = get_instance_host(GCP_INSTANCE_APP_WRK2, GCP_ZONE_MANAGER)
-  host_app_eu     = get_instance_host(GCP_INSTANCE_APP_EU, GCP_ZONE_EU)
-  host_app_us     = get_instance_host(GCP_INSTANCE_APP_US, GCP_ZONE_US)
-
-  template = """
-    [swarm_manager]
-    weaver-dsb-db-manager ansible_host={{ host_db_manager }} user=mafaldacf
-
-    [swarm_workers]
-    weaver-dsb-db-eu      ansible_host={{ host_db_eu }} user=mafaldacf
-    weaver-dsb-db-us      ansible_host={{ host_db_us }} user=mafaldacf
-
-    [app_wrk2]
-    weaver-dsb-app-wrk2   ansible_host={{ host_app_wrk2 }} user=mafaldacf
-
-    [app_services]
-    weaver-dsb-app-eu     ansible_host={{ host_app_eu }} user=mafaldacf region="eu" app_port="9000"
-    weaver-dsb-app-us     ansible_host={{ host_app_us }} user=mafaldacf region="us" app_port="9001"
-  """
-  inventory = Environment().from_string(template).render({
-    'host_db_manager':  host_db_manager,
-    'host_db_eu':       host_db_eu,
-    'host_db_us':       host_db_us,
-    'host_app_wrk2':    host_app_wrk2,
-    'host_app_eu':      host_app_eu,
-    'host_app_us':      host_app_us,
+  template = Environment(loader=FileSystemLoader('.')).get_template( "deploy/ansible/templates/inventory.cfg")
+  inventory = template.render({
+    'username':         GCP_USERNAME,
+    'host_db_manager':  get_instance_host(GCP_INSTANCE_DB_MANAGER, GCP_ZONE_MANAGER),
+    'host_db_eu':       get_instance_host(GCP_INSTANCE_DB_EU, GCP_ZONE_EU),
+    'host_db_us':       get_instance_host(GCP_INSTANCE_DB_US, GCP_ZONE_US),
+    'host_app_wrk2':    get_instance_host(GCP_INSTANCE_APP_WRK2, GCP_ZONE_MANAGER),
+    'host_app_eu':      get_instance_host(GCP_INSTANCE_APP_EU, GCP_ZONE_EU),
+    'host_app_us':      get_instance_host(GCP_INSTANCE_APP_US, GCP_ZONE_US),
   })
 
-  filename = "deploy/tmp/ansible-inventory-gcp.cfg"
+  filename = "deploy/tmp/ansible-inventory.cfg"
   with open(filename, 'w') as f:
     f.write(textwrap.dedent(inventory))
   print(f"[INFO] generated ansible inventory for GCP at '{filename}'")
+
+def gen_ansible_config():
+  from jinja2 import Environment, FileSystemLoader
+  from plumbum.cmd import cp
+  import textwrap
+  import os
+
+  # ensure that public key exists
+  pub_key_path = os.path.expanduser("~/.ssh/google_compute_engine")
+  if not os.path.exists(pub_key_path):
+    print(f"[ERROR] google compute engine public key not found at '{pub_key_path}'")
+    exit(-1)
+
+  template = Environment(loader=FileSystemLoader('.')).get_template( "deploy/ansible/templates/ansible.cfg")
+  inventory = template.render({
+    'gcp_pub_key_path': pub_key_path,
+  })
+
+  path1 = "deploy/tmp/ansible.cfg"
+  with open(path1, 'w') as f:
+    f.write(textwrap.dedent(inventory))
+  print(f"[INFO] generated ansible config at '{path1}'")
+
+  path2 = os.path.expanduser("~/.ansible.cfg")
+  cp[path1, path2] & FG
+  print(f"[INFO] copied ansible config to '{path2}'")
 
 # METRICS FORMAT
 #╭────────────────────────────────────────────────────────────────────────╮
@@ -322,15 +326,14 @@ def gcp_configure():
     print(f"[ERROR] could not configure firewalls: {e}\n\n")
 
 def gcp_deploy():
-  from plumbum.cmd import terraform, cp, ansible_playbook
+  from plumbum.cmd import terraform, ansible_playbook
 
   terraform['-chdir=./deploy/terraform', 'init'] & FG
   terraform['-chdir=./deploy/terraform', 'apply', '-auto-approve'] & FG
 
   display_progress_bar(30, "waiting for all machines to be ready")
 
-  cp["deploy/ansible/ansible.cfg", os.path.expanduser("~/.ansible.cfg")] & FG
-  print("[INFO] copied deploy/ansible/ansible.cfg to ~.ansible.cfg")
+  gen_ansible_config()
 
   # generate temporary files for this deployment
   os.makedirs("deploy/tmp", exist_ok=True)
@@ -342,7 +345,7 @@ def gcp_deploy():
   # generate ansible inventory with extra variables for current deployment
   gen_ansible_vars()
   
-  ansible_playbook["deploy/ansible/playbooks/install-machines.yml", "-i", "deploy/tmp/ansible-inventory-gcp.cfg", "--extra-vars", "@deploy/tmp/ansible-vars.yml"] & FG
+  ansible_playbook["deploy/ansible/playbooks/install-machines.yml", "-i", "deploy/tmp/ansible-inventory.cfg", "--extra-vars", "@deploy/tmp/ansible-vars.yml"] & FG
 
 def gcp_info():
   from plumbum.cmd import gcloud
@@ -360,14 +363,14 @@ def gcp_info():
   
 def gcp_start():
   from plumbum.cmd import ansible_playbook
-  ansible_playbook["deploy/ansible/playbooks/start-datastores.yml", "-i", "deploy/tmp/ansible-inventory-gcp.cfg", "--extra-vars", "@deploy/tmp/ansible-vars.yml"] & FG
+  ansible_playbook["deploy/ansible/playbooks/start-datastores.yml", "-i", "deploy/tmp/ansible-inventory.cfg", "--extra-vars", "@deploy/tmp/ansible-vars.yml"] & FG
   display_progress_bar(30, "waiting for datastores to initialize")
-  ansible_playbook["deploy/ansible/playbooks/start-app.yml", "-i", "deploy/tmp/ansible-inventory-gcp.cfg", "--extra-vars", "@deploy/tmp/ansible-vars.yml"] & FG
+  ansible_playbook["deploy/ansible/playbooks/start-app.yml", "-i", "deploy/tmp/ansible-inventory.cfg", "--extra-vars", "@deploy/tmp/ansible-vars.yml"] & FG
 
 def gcp_stop():
   from plumbum.cmd import ansible_playbook
-  ansible_playbook["deploy/ansible/playbooks/stop-datastores.yml", "-i", "deploy/tmp/ansible-inventory-gcp.cfg", "--extra-vars", "@deploy/tmp/ansible-vars.yml"] & FG
-  ansible_playbook["deploy/ansible/playbooks/stop-app.yml", "-i", "deploy/tmp/ansible-inventory-gcp.cfg", "--extra-vars", "@deploy/tmp/ansible-vars.yml"] & FG
+  ansible_playbook["deploy/ansible/playbooks/stop-datastores.yml", "-i", "deploy/tmp/ansible-inventory.cfg", "--extra-vars", "@deploy/tmp/ansible-vars.yml"] & FG
+  ansible_playbook["deploy/ansible/playbooks/stop-app.yml", "-i", "deploy/tmp/ansible-inventory.cfg", "--extra-vars", "@deploy/tmp/ansible-vars.yml"] & FG
 
 def gcp_restart():
   gcp_stop()
@@ -395,7 +398,7 @@ def gcp_wrk2(threads, conns, duration, rate):
   timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
   run_workload(timestamp, 'gcp', f"http://{host_eu}:{APP_PORT}", threads, conns, duration, rate)
   gen_ansible_vars(timestamp, 'gcp')
-  ansible_playbook["deploy/ansible/playbooks/gather-metrics.yml", "-i", "deploy/tmp/ansible-inventory-gcp.cfg", "--extra-vars", "@deploy/tmp/ansible-vars.yml"] & FG
+  ansible_playbook["deploy/ansible/playbooks/gather-metrics.yml", "-i", "deploy/tmp/ansible-inventory.cfg", "--extra-vars", "@deploy/tmp/ansible-vars.yml"] & FG
   print(f"[INFO] metrics results saved at evaluation/gcp/{timestamp}/ in metrics-eu.yaml and metrics-us.yaml files")
 
 # --------------------
@@ -444,7 +447,7 @@ if __name__ == "__main__":
 
   commands = [
     # gcp
-    'configure', 'deploy', 'start', 'stop', 'info', 'restart', 'clean', 'info',
+    'configure', 'deploy', 'start', 'stop', 'info', 'restart', 'clean',
     # datastores
     'storage-build', 'storage-deploy', 'storage-run', 'storage-info', 'storage-clean',
     # eval
@@ -453,7 +456,7 @@ if __name__ == "__main__":
   for cmd in commands:
     parser = command_parser.add_parser(cmd)
     parser.add_argument('--local', action='store_true', help="Running in localhost")
-    parser.add_argument('--gcp', action='store_true',   help="Running in gcp")
+    parser.add_argument('--gcp', action='store_true', help="Running in gcp")
     if cmd == 'wrk2':
       parser.add_argument('-t', '--threads', default=2, help="Number of threads")
       parser.add_argument('-c', '--conns', default=2, help="Number of connections")
@@ -469,7 +472,7 @@ if __name__ == "__main__":
   gcp = args.pop('gcp')
 
   if local and gcp or not local and not gcp:
-    print("[ERROR] one of --local or --gcp flgs needs to be provided")
+    print("[ERROR] one of --local or --gcp flags needs to be provided")
     exit(-1)
 
   if local:

@@ -19,3 +19,4 @@
         src: "/home/{{ hostvars[inventory_hostname]['user'] }}/{{ app_folder_name }}/evaluation/local/{{ workload_timestamp }}/metrics.yml"
         dest: "{{ base_dir }}/evaluation/{{ deployment_type }}/{{ workload_timestamp }}/metrics-{{ hostvars[inventory_hostname]['region'] }}.yml"
         mode: pull
+        use_ssh_args: yes
