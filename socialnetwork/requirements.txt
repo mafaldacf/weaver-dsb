@@ -6,6 +6,7 @@ tqdm
 google-api-python-client
 plumbum
 jinja2
+ansible
 # from social-graph folder
 aiohttp
 asyncio

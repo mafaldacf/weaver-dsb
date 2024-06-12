@@ -1,5 +1,7 @@
 # gcp config
 gcp/credentials.json
+gcp/google_compute_engine
+gcp/google_compute_engine.pub
 gcp/token.txt
 # terraform
 deploy/terraform/.terraform

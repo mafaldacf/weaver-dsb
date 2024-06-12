@@ -15,6 +15,10 @@ APP_PORT                    = 9000
 NUM_DOCKER_SWARM_SERVICES   = 20
 NUM_DOCKER_SWARM_NODES      = 3
 BASE_DIR                    = os.path.dirname(os.path.realpath(__file__))
+DOCKER_IMAGE_NAME           = "weaver-dsb-sn"
+APP_FOLDER_NAME             = "socialnetwork"
+GCP_SSH_KEY_NAME            = "google_compute_engine"
+GCP_SSH_KEY_PATH            = os.path.expanduser(f"~/.ssh/{GCP_SSH_KEY_NAME}")
 
 # -----------
 # GCP profile
@@ -29,7 +33,6 @@ GCP_COMPUTE                     = None
 # GCP app configuration
 # ---------------------
 # same as in terraform
-APP_FOLDER_NAME           = "socialnetwork"
 GCP_INSTANCE_APP_WRK2     = "weaver-dsb-app-wrk2"
 GCP_INSTANCE_APP_EU       = "weaver-dsb-app-eu"
 GCP_INSTANCE_APP_US       = "weaver-dsb-app-us"
@@ -180,25 +183,25 @@ def gen_ansible_config():
   import textwrap
   import os
 
-  # ensure that public key exists
-  pub_key_path = os.path.expanduser("~/.ssh/google_compute_engine")
-  if not os.path.exists(pub_key_path):
-    print(f"[ERROR] google compute engine public key not found at '{pub_key_path}'")
+  # ensure that ssh key exists
+  if not os.path.exists(GCP_SSH_KEY_PATH):
+    print(f"[ERROR] SSH key not found at '{GCP_SSH_KEY_PATH}'")
     exit(-1)
 
   template = Environment(loader=FileSystemLoader('.')).get_template( "deploy/ansible/templates/ansible.cfg")
   inventory = template.render({
-    'gcp_pub_key_path': pub_key_path,
+    'gcp_ssh_key_path': GCP_SSH_KEY_PATH,
+    'username': GCP_USERNAME,
   })
 
-  path1 = "deploy/tmp/ansible.cfg"
-  with open(path1, 'w') as f:
+  ansible_cfg_path = "deploy/tmp/ansible.cfg"
+  with open(ansible_cfg_path, 'w') as f:
     f.write(textwrap.dedent(inventory))
-  print(f"[INFO] generated ansible config at '{path1}'")
+  print(f"[INFO] generated ansible config at '{ansible_cfg_path}'")
 
-  path2 = os.path.expanduser("~/.ansible.cfg")
-  cp[path1, path2] & FG
-  print(f"[INFO] copied ansible config to '{path2}'")
+  root_ansible_cfg_path = os.path.expanduser("~/.ansible.cfg")
+  cp[ansible_cfg_path, root_ansible_cfg_path] & FG
+  print(f"[INFO] copied ansible config to '{root_ansible_cfg_path}'")
 
 # METRICS FORMAT
 #╭────────────────────────────────────────────────────────────────────────╮
@@ -294,7 +297,7 @@ def metrics(deployment, timestamp=None):
 # GCP
 # --------------------
 
-def gcp_configure():
+def gcp_configure_firewalls():
   from plumbum.cmd import gcloud
 
   try:
@@ -312,32 +315,63 @@ def gcp_configure():
       'weaver-dsb-swarm': 'tcp:2376,tcp:2377,tcp:7946,udp:4789,udp:7946'
     }
 
+    current_rules = gcloud['compute', '--project', GCP_PROJECT_ID, 'firewall-rules', 'list']()
+
     for name, rules in firewalls.items():
-      gcloud['compute', 
-            '--project', GCP_PROJECT_ID, 'firewall-rules', 'create', 
-            f'{name}',
-            '--direction=INGRESS',
-            '--priority=100',
-            '--network=default',
-            '--action=ALLOW',
-            f'--rules={rules}',
-            '--source-ranges=0.0.0.0/0'] & FG
+      if name in current_rules:
+        print(f"[WARNING] firewall rule {name} already exists... ignoring")
+      else:
+        gcloud['compute', 
+              '--project', GCP_PROJECT_ID, 'firewall-rules', 'create', 
+              f'{name}',
+              '--direction=INGRESS',
+              '--priority=100',
+              '--network=default',
+              '--action=ALLOW',
+              f'--rules={rules}',
+              '--source-ranges=0.0.0.0/0'] & FG
   except Exception as e:
     print(f"[ERROR] could not configure firewalls: {e}\n\n")
+    exit(-1)
+
+# NOT USED AT THE MOMENT
+def gcp_configure_ssh_keys():
+  from plumbum.cmd import ssh_keygen, gcloud
+  try:
+    # commands:
+    # $ ssh-keygen -t rsa -f /Users/mafaldacf/workspace/weaver-dsb/socialnetwork/gcp/google_compute_engine -C mafaldacf -b 2048 -q -N ""
+    # $ gcloud compute os-login ssh-keys add --key-file=/Users/mafaldacf/workspace/weaver-dsb/socialnetwork/gcp/google_compute_engine.pub --project=weaver-dsb
+    # $ gcloud compute project-info add-metadata --metadata-from-file ssh-keys=/Users/mafaldacf/workspace/weaver-dsb/socialnetwork/gcp/google_compute_engine.pub
+
+    print("[INFO] configuring SSH keys")
+    
+    if os.path.exists(GCP_SSH_KEY_PATH):
+      print(f"[WARNING] SSH private key already exists at {GCP_SSH_KEY_PATH}... ignoring")
+      return
+
+    ssh_keygen['-t', 'rsa', '-f', GCP_SSH_KEY_PATH, '-C', GCP_USERNAME, '-b', 2048] & FG
+    gcloud['compute', 'os-login', 'ssh-keys', 'add', '--key-file', GCP_SSH_KEY_PATH, '--project', GCP_PROJECT_ID] & FG
+    gcloud['compute', 'project-info', 'add-metadata', '--metadata-from-file', f'ssh-keys={GCP_SSH_KEY_PATH}'] & FG
+
+  except Exception as e:
+    print(f"[ERROR] could not configure SSH keys: {e}\n\n")
+
+def gcp_configure():
+  gcp_configure_firewalls()
+  #gcp_configure_ssh_keys()
 
 def gcp_deploy():
   from plumbum.cmd import terraform, ansible_playbook
 
   terraform['-chdir=./deploy/terraform', 'init'] & FG
   terraform['-chdir=./deploy/terraform', 'apply', '-auto-approve'] & FG
-
   display_progress_bar(30, "waiting for all machines to be ready")
-
-  gen_ansible_config()
 
   # generate temporary files for this deployment
   os.makedirs("deploy/tmp", exist_ok=True)
   print(f"[INFO] created deploy/tmp/ directory")
+
+  gen_ansible_config()
   # generate weaver config with hosts of datastores in gcp machines
   gen_weaver_config_gcp()
   # generate ansible inventory with hosts of all gcp machines
@@ -418,62 +452,103 @@ def local_wrk2(threads, conns, duration, rate):
 def local_metrics(timestamp):
   metrics('local', timestamp)
 
-def local_storage_deploy():
+def local_deploy():
   print("[INFO] nothing to be done for local")
   exit(0)
 
-def local_storage_build():
+def local_build():
   from plumbum.cmd import docker
   docker['build', '-t', 'mongodb-delayed:4.4.6', 'docker/mongodb-delayed/.'] & FG
   docker['build', '-t', 'mongodb-setup:4.4.6', 'docker/mongodb-setup/post-storage/.'] & FG
   docker['build', '-t', 'rabbitmq-setup:3.8', 'docker/rabbitmq-setup/write-home-timeline/.'] & FG
 
-def local_storage_run():
+def local_run():
   from plumbum.cmd import docker_compose
   docker_compose['up', '-d'] & FG
   display_progress_bar(30, "waiting for storages to be ready")
 
-def local_storage_info():
+def local_info():
   print("[INFO] nothing to be done for local")
   exit(0)
 
-def local_storage_clean():
+def local_clean():
   from plumbum.cmd import docker_compose
   docker_compose['down'] & FG
 
+def docker_run():
+  # already in docker
+  if os.path.isfile('/.dockerenv'):
+    print(f"[WARNING] already inside docker container")
+    return
+  
+  from plumbum.cmd import docker
+  import subprocess
+  
+  # build image if not yet built
+  if docker['images', DOCKER_IMAGE_NAME, '--format', '"{{.ID}}"']() == '':
+    docker['build', '--no-cache', '-t', 'weaver-dsb-sn', '.'] & FG
+
+  args = ['docker', 'run', '-it', 
+    # https://stackoverflow.com/questions/54062327/running-docker-inside-docker-container-cannot-connect-to-the-docker-daemon
+    '-v', '/var/run/docker.sock:/var/run/docker.sock',
+    '-v', f'{GCP_SSH_KEY_PATH}:/root/.ssh/{GCP_SSH_KEY_NAME}',
+    # use app folder as a volume to make sure it is always up to date with changes
+    '-v', f'{BASE_DIR}:/{APP_FOLDER_NAME}',
+    # set startup directory to the app folder
+    '-w', f'/{APP_FOLDER_NAME}', 
+    DOCKER_IMAGE_NAME
+  ] + sys.argv
+
+  subprocess.call(args)
+  exit(0)
+
 if __name__ == "__main__":
   main_parser = argparse.ArgumentParser()
+
+  deploy_group = main_parser.add_mutually_exclusive_group(required=True)
+  main_parser.add_argument('--docker', action='store_true', help='Enable docker environment')
+  deploy_group.add_argument('--local', action='store_true', help='Deploy application locally')
+  deploy_group.add_argument('--gcp', action='store_true', help='Deploy application in GCP')
+
   command_parser = main_parser.add_subparsers(help='commands', dest='command')
 
-  commands = [
-    # gcp
-    'configure', 'deploy', 'start', 'stop', 'info', 'restart', 'clean',
-    # datastores
-    'storage-build', 'storage-deploy', 'storage-run', 'storage-info', 'storage-clean',
-    # eval
-    'init-social-graph', 'wrk2', 'metrics',
-  ]
-  for cmd in commands:
-    parser = command_parser.add_parser(cmd)
-    parser.add_argument('--local', action='store_true', help="Running in localhost")
-    parser.add_argument('--gcp', action='store_true', help="Running in gcp")
-    if cmd == 'wrk2':
-      parser.add_argument('-t', '--threads', default=2, help="Number of threads")
-      parser.add_argument('-c', '--conns', default=2, help="Number of connections")
-      parser.add_argument('-d', '--duration', default=30, help="Duration")
-      parser.add_argument('-r', '--rate', default=50, help="Number of requests per second")
-    if cmd == 'metrics':
-      parser.add_argument('-t', '--timestamp', help="Timestamp of workload")
-      
+  # local
+  local_commands = ['build', 'run', 'stop']
+  for p in local_commands:
+    command_parser.add_parser(p)
+
+  # gcp
+  gcp_commands = ['configure', 'deploy', 'start', 'info', 'restart', 'clean']
+  for p in gcp_commands:
+    command_parser.add_parser(p)
+
+  # eval
+  command_parser.add_parser('init-social-graph')
+  # eval wkr2
+  eval_wrk2_parser = command_parser.add_parser('wrk2')
+  eval_wrk2_parser.add_argument('-t', '--threads', default=2, help="Number of threads")
+  eval_wrk2_parser.add_argument('-c', '--conns', default=2, help="Number of connections")
+  eval_wrk2_parser.add_argument('-d', '--duration', default=30, help="Duration")
+  eval_wrk2_parser.add_argument('-r', '--rate', default=50, help="Number of requests per second")
+  # eval metrics
+  eval_metrics_parser = command_parser.add_parser('metrics')
+  eval_metrics_parser.add_argument('-t', '--timestamp', help="Timestamp of workload")
+
   args = vars(main_parser.parse_args())
   command = args.pop('command').replace('-', '_')
-
   local = args.pop('local')
   gcp = args.pop('gcp')
+  docker = args.pop('docker')
 
-  if local and gcp or not local and not gcp:
-    print("[ERROR] one of --local or --gcp flags needs to be provided")
+  # at least one flag must be provided
+  # --local and --gcp are mutually exclusive
+  # --docker is optional
+  if not local and not gcp and not docker:
+    print("[ERROR] one of --local or --gcp flags needs to be provided (--docker flag is optional)")
     exit(-1)
+
+  if docker:
+    docker_run()
 
   if local:
     command = 'local_' + command
